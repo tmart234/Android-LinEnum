@@ -1,3 +1,6 @@
+This is a forked version that supports Android
+
+
 # LinEnum
 For more information visit www.rebootuser.com
 

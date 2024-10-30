@@ -138,7 +138,14 @@ if [ "$hostnamed" ]; then
   echo -e "\n" 
 fi
 
-#android/embedded system checks (fails gracefully on non-mobile)
+#embedded bootloader info
+bootinfo=`find /proc /sys /dev -name "boot*" -type f -exec ls -la {} \; 2>/dev/null`
+if [ "$bootinfo" ]; then
+    echo -e "\e[00;31m[-] Boot-related files:\e[00m\n$bootinfo"
+    echo -e "\n"
+fi
+
+#android/embedded system checks 
 androidver=`getprop ro.build.version.release 2>/dev/null`
 if [ "$androidver" ]; then
     echo -e "\e[00;31m[-] Android system information:\e[00m"
@@ -149,18 +156,79 @@ if [ "$androidver" ]; then
     if [ "$patchlevel" ]; then
         echo -e "Security Patch Level: $patchlevel"
     fi
-    echo -e "\n"
-fi
 
-#embedded bootloader info (useful on any platform)
-bootinfo=`find /proc /sys /dev -name "boot*" -type f -exec ls -la {} \; 2>/dev/null`
-if [ "$bootinfo" ]; then
-    echo -e "\e[00;31m[-] Boot-related files:\e[00m\n$bootinfo"
-    echo -e "\n"
-fi
+    #check if running on Android TV and handle TV-specific checks
+    tvinfo=`getprop ro.product.characteristics 2>/dev/null`
+    if [ "$tvinfo" = "tv" ]; then
+        echo -e "\e[00;31m[-] Android TV detected - checking for vulnerabilities\e[00m"
+        
+        #check system update policy and other security settings
+        sysupdate=`getprop persist.sys.system_update_policy 2>/dev/null`
+        if [ "$sysupdate" ]; then
+            echo -e "\e[00;31m[-] System update policy:\e[00m\n$sysupdate"
+        fi
 
-#check if we have root on Android
-if [ "$androidver" ]; then
+        #check for TV-specific vulnerabilities based on version
+        case "$androidver" in
+            "10")
+                #MediaProjection checks
+                projperms=`dumpsys media_projection 2>/dev/null`
+                if [ "$projperms" ]; then
+                    echo -e "\e[00;33m[+] Potential MediaProjection vulnerability\e[00m"
+                fi
+                ;;
+            "8"|"8.1"|"9")
+                #Launcher vulnerability checks
+                launcherperm=`pm list packages -f com.google.android.tvlauncher 2>/dev/null`
+                if [ "$launcherperm" ] && grep -q "CUSTOM_INTENT" <(dumpsys package com.google.android.tvlauncher 2>/dev/null); then
+                    echo -e "\e[00;33m[+] TV Launcher vulnerable to privilege escalation\e[00m"
+                fi
+
+                #Check for known Intent redirection vulnerability
+                activitycheck=`dumpsys package com.google.android.tvlauncher | grep -A5 "Activity" | grep "android:exported=true" 2>/dev/null`
+                if [ "$activitycheck" ]; then
+                    echo -e "\e[00;33m[+] TV Launcher has exposed activities - potential intent redirection\e[00m"
+                fi
+
+                #Check for SetupActivity vulnerability (8.0, 8.1)
+                if [ "$androidver" = "8" ] || [ "$androidver" = "8.1" ]; then
+                    setupact=`dumpsys package com.google.android.tvlauncher | grep -A2 "SetupActivity" | grep "exported=true" 2>/dev/null`
+                    if [ "$setupact" ]; then
+                        echo -e "\e[00;33m[+] TV Launcher Setup Activity vulnerability present\e[00m"
+                    fi
+
+                    #Check for TvSettings privilege escalation
+                    tvsettings=`dumpsys package com.android.tv.settings | grep -A2 "WRITE_SECURE_SETTINGS" 2>/dev/null`
+                    if [ "$tvsettings" ]; then
+                        echo -e "\e[00;33m[+] TvSettings has elevated permissions - potential privilege escalation\e[00m"
+                    fi
+
+                    #Check for unprotected broadcast receivers
+                    broadcasts=`dumpsys package com.google.android.tvlauncher | grep -A5 "Receiver" | grep -E "INSTALL_PACKAGES|DELETE_PACKAGES" 2>/dev/null`
+                    if [ "$broadcasts" ]; then
+                        echo -e "\e[00;33m[+] TV Launcher has vulnerable broadcast receivers\e[00m"
+                    fi
+                fi
+
+                #Check for content provider exposure (8.x specific)
+                providers=`dumpsys package com.google.android.tvlauncher | grep -A5 "Provider" | grep "android:exported=true" 2>/dev/null`
+                if [ "$providers" ]; then
+                    echo -e "\e[00;33m[+] TV Launcher has exposed content providers\e[00m"
+                fi
+                ;;
+        esac
+
+        #Common checks for all TV versions
+        if [ "$thorough" = "1" ]; then
+            settingscheck=`dumpsys package com.android.tv.settings 2>/dev/null`
+            if echo "$settingscheck" | grep -q "WRITE_SECURE_SETTINGS\|android:exported=\"true\""; then
+                echo -e "\e[00;33m[+] TVSettings has dangerous configurations\e[00m"
+            fi
+        fi
+    fi
+    echo -e "\n"
+
+    #check if we have root
     id=`id 2>/dev/null`
     if [ "$(echo $id | grep 'uid=0')" ]; then
         echo -e "\e[00;33m[+] Running as root on Android!\e[00m"
@@ -175,103 +243,6 @@ if [ "$androidver" ]; then
     secprops=`getprop | grep -E "ro.secure=|ro.debuggable=|ro.adb.secure=|persist.sys.usb.config" 2>/dev/null`
     if [ "$secprops" ]; then
         echo -e "\e[00;31m[-] Security-relevant Android properties:\e[00m\n$secprops"
-    fi
-fi
-
-if [ "$androidver" ]; then
-    #check if running on Android TV
-    tvinfo=`getprop ro.product.characteristics 2>/dev/null`
-    if [ "$tvinfo" = "tv" ]; then
-        echo -e "\e[00;31m[-] Android TV detected\e[00m"
-        
-        #check system update settings - important for patch status
-        sysupdate=`getprop persist.sys.system_update_policy 2>/dev/null`
-        if [ "$sysupdate" ]; then
-            echo -e "\e[00;31m[-] System update policy:\e[00m\n$sysupdate"
-        fi
-
-        #check for sideloading settings - potential attack vector
-        unknownsources=`settings get secure install_non_market_apps 2>/dev/null`
-        if [ "$unknownsources" = "1" ]; then
-            echo -e "\e[00;33m[+] Unknown sources installation is enabled!\e[00m"
-        fi
-
-        #check for developer options - could indicate expanded attack surface
-        devmode=`settings get global development_settings_enabled 2>/dev/null`
-        if [ "$devmode" = "1" ]; then
-            echo -e "\e[00;33m[+] Developer mode is enabled!\e[00m"
-            
-            #if dev mode on, check USB debugging
-            usbdebug=`settings get global adb_enabled 2>/dev/null`
-            if [ "$usbdebug" = "1" ]; then
-                echo -e "\e[00;33m[+] USB debugging is enabled!\e[00m"
-            fi
-        fi
-    fi
-fi
-if [ "$tvinfo" = "tv" ]; then
-    echo -e "\e[00;31m[-] Android TV detected - checking known vulnerabilities\e[00m"
-    
-    #CVE-2020-0444 (Android 10) - MediaProjection elevation of privilege
-    if [ "$androidver" = "10" ]; then
-        projperms=`dumpsys media_projection 2>/dev/null`
-        if [ "$projperms" ]; then
-            echo -e "\e[00;33m[+] Potential MediaProjection vulnerability - check permissions:\e[00m\n$projperms"
-        fi
-    fi
-
-    #Android 8/9 TV launcher privilege escalation 
-    if [ "$androidver" = "8.1" ] || [ "$androidver" = "9" ]; then
-        launcherperm=`pm list packages -f com.google.android.tvlauncher 2>/dev/null`
-        if [ "$launcherperm" ]; then
-            customintent=`dumpsys package com.google.android.tvlauncher | grep -B2 "android.permission.CUSTOM_INTENT" 2>/dev/null`
-            if [ "$customintent" ]; then
-                echo -e "\e[00;33m[+] TV Launcher has custom intent permissions - potential privilege escalation\e[00m"
-            fi
-        fi
-    fi
-    
-    #TVSettings vulnerabilities (7.x-9.0)
-    if [[ "$androidver" =~ ^[789] ]]; then
-        tvsettings=`pm list packages -f com.android.tv.settings 2>/dev/null`
-        if [ "$tvsettings" ]; then
-            #Check for unprotected activities
-            expactivities=`dumpsys package com.android.tv.settings | grep -A5 "Activity" | grep "android:exported=true" 2>/dev/null`
-            if [ "$expactivities" ]; then
-                echo -e "\e[00;33m[+] TVSettings has exported activities - potential unauthorized access\e[00m"
-            fi
-
-            #Check for system write permissions
-            sysperm=`dumpsys package com.android.tv.settings | grep "WRITE_SECURE_SETTINGS" 2>/dev/null`
-            if [ "$sysperm" ]; then
-                echo -e "\e[00;33m[+] TVSettings has system write permissions - potential settings manipulation\e[00m"
-            fi
-        fi
-    fi
-
-    #Check for CEC vulnerabilities (all versions)
-    if [ -d "/sys/devices/virtual/hdmi_cec" ]; then
-        cecperms=`ls -l /sys/devices/virtual/hdmi_cec 2>/dev/null`
-        if [ "$cecperms" ]; then
-            echo -e "\e[00;31m[-] HDMI-CEC permissions:\e[00m\n$cecperms"
-            
-            #Check for write access
-            cecwrite=`find /sys/devices/virtual/hdmi_cec -writable -type f 2>/dev/null`
-            if [ "$cecwrite" ]; then
-                echo -e "\e[00;33m[+] Writable CEC files found - potential CEC injection:\e[00m\n$cecwrite"
-            fi
-        fi
-    fi
-
-    #Remote app installation check (all versions)
-    unknownsources=`settings get secure install_non_market_apps 2>/dev/null`
-    if [ "$unknownsources" = "1" ]; then
-        echo -e "\e[00;33m[+] Unknown sources enabled - potential remote app installation\e[00m"
-        
-        #Check if debugging is also enabled
-        if [ "$adbstatus" = "running" ]; then
-            echo -e "\e[00;33m[+] ADB + Unknown sources - high risk of remote exploitation\e[00m"
-        fi
     fi
 fi
 }

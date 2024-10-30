@@ -497,10 +497,14 @@ if [ "$envinfo" ]; then
   echo -e "\n"
 fi
 
-#check if selinux is enabled
-sestatus=`sestatus 2>/dev/null`
-if [ "$sestatus" ]; then
-  echo -e "\e[00;31m[-] SELinux seems to be present:\e[00m\n$sestatus"
+#check if selinux is enabled - compatible with Android
+if command -v sestatus >/dev/null 2>&1; then
+  sestatus=`sestatus 2>/dev/null`
+  echo -e "\e[00;31m[-] SELinux status (Linux):\e[00m\n$sestatus"
+  echo -e "\n"
+elif command -v getenforce >/dev/null 2>&1; then
+  selinux_status=`getenforce 2>/dev/null`
+  echo -e "\e[00;31m[-] SELinux status (Android):\e[00m\n$selinux_status"
   echo -e "\n"
 fi
 
@@ -515,12 +519,18 @@ if [ "$pathinfo" ]; then
   echo -e "\n"
 fi
 
-#lists available shells
-shellinfo=`cat /etc/shells 2>/dev/null`
-if [ "$shellinfo" ]; then
-  echo -e "\e[00;31m[-] Available shells:\e[00m\n$shellinfo" 
-  echo -e "\n"
+#lists available shells - compatible with both Android
+echo -e "\e[00;31m[-] Available shells:\e[00m"
+if [ -f "/etc/shells" ]; then
+  cat /etc/shells 2>/dev/null
 fi
+# Check common shell locations for Android and Linux
+for shell_path in "/system/bin" "/bin" "/usr/bin"; do
+  if [ -d "$shell_path" ]; then
+    ls -l $shell_path/*sh 2>/dev/null
+  fi
+done
+echo -e "\n"
 
 #current umask value with both octal and symbolic output
 umaskvalue=`umask -S 2>/dev/null & umask 2>/dev/null`

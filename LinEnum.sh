@@ -76,6 +76,32 @@ echo -e "\n"
 
 echo -e "\e[00;33mScan started at:"; date 
 echo -e "\e[00m\n" 
+
+#Android debug checks if Android detected
+androidver=`getprop ro.build.version.release 2>/dev/null`
+if [ "$androidver" ]; then
+    echo -e "\e[00;33m[+] Android debug info:\e[00m"
+    
+    #check if debuggable 
+    debuggable=`getprop ro.debuggable 2>/dev/null`
+    if [ "$debuggable" = "1" ]; then
+        echo -e "\e[00;33m[+] Device is debuggable!\e[00m"
+    fi
+
+    #check adb status
+    adbstatus=`getprop init.svc.adbd 2>/dev/null`
+    if [ "$adbstatus" = "running" ]; then
+        echo -e "\e[00;33m[+] ADB daemon is running!\e[00m"
+    fi
+
+    #check debug properties
+    debugprops=`getprop | grep -E "debug\." 2>/dev/null`
+    if [ "$debugprops" ]; then
+        echo -e "\e[00;31m[-] Debug properties set:\e[00m\n$debugprops"
+    fi
+
+    echo -e "\n"
+fi
 }
 
 # useful binaries (thanks to https://gtfobins.github.io/)
@@ -149,6 +175,103 @@ if [ "$androidver" ]; then
     secprops=`getprop | grep -E "ro.secure=|ro.debuggable=|ro.adb.secure=|persist.sys.usb.config" 2>/dev/null`
     if [ "$secprops" ]; then
         echo -e "\e[00;31m[-] Security-relevant Android properties:\e[00m\n$secprops"
+    fi
+fi
+
+if [ "$androidver" ]; then
+    #check if running on Android TV
+    tvinfo=`getprop ro.product.characteristics 2>/dev/null`
+    if [ "$tvinfo" = "tv" ]; then
+        echo -e "\e[00;31m[-] Android TV detected\e[00m"
+        
+        #check system update settings - important for patch status
+        sysupdate=`getprop persist.sys.system_update_policy 2>/dev/null`
+        if [ "$sysupdate" ]; then
+            echo -e "\e[00;31m[-] System update policy:\e[00m\n$sysupdate"
+        fi
+
+        #check for sideloading settings - potential attack vector
+        unknownsources=`settings get secure install_non_market_apps 2>/dev/null`
+        if [ "$unknownsources" = "1" ]; then
+            echo -e "\e[00;33m[+] Unknown sources installation is enabled!\e[00m"
+        fi
+
+        #check for developer options - could indicate expanded attack surface
+        devmode=`settings get global development_settings_enabled 2>/dev/null`
+        if [ "$devmode" = "1" ]; then
+            echo -e "\e[00;33m[+] Developer mode is enabled!\e[00m"
+            
+            #if dev mode on, check USB debugging
+            usbdebug=`settings get global adb_enabled 2>/dev/null`
+            if [ "$usbdebug" = "1" ]; then
+                echo -e "\e[00;33m[+] USB debugging is enabled!\e[00m"
+            fi
+        fi
+    fi
+fi
+if [ "$tvinfo" = "tv" ]; then
+    echo -e "\e[00;31m[-] Android TV detected - checking known vulnerabilities\e[00m"
+    
+    #CVE-2020-0444 (Android 10) - MediaProjection elevation of privilege
+    if [ "$androidver" = "10" ]; then
+        projperms=`dumpsys media_projection 2>/dev/null`
+        if [ "$projperms" ]; then
+            echo -e "\e[00;33m[+] Potential MediaProjection vulnerability - check permissions:\e[00m\n$projperms"
+        fi
+    fi
+
+    #Android 8/9 TV launcher privilege escalation 
+    if [ "$androidver" = "8.1" ] || [ "$androidver" = "9" ]; then
+        launcherperm=`pm list packages -f com.google.android.tvlauncher 2>/dev/null`
+        if [ "$launcherperm" ]; then
+            customintent=`dumpsys package com.google.android.tvlauncher | grep -B2 "android.permission.CUSTOM_INTENT" 2>/dev/null`
+            if [ "$customintent" ]; then
+                echo -e "\e[00;33m[+] TV Launcher has custom intent permissions - potential privilege escalation\e[00m"
+            fi
+        fi
+    fi
+    
+    #TVSettings vulnerabilities (7.x-9.0)
+    if [[ "$androidver" =~ ^[789] ]]; then
+        tvsettings=`pm list packages -f com.android.tv.settings 2>/dev/null`
+        if [ "$tvsettings" ]; then
+            #Check for unprotected activities
+            expactivities=`dumpsys package com.android.tv.settings | grep -A5 "Activity" | grep "android:exported=true" 2>/dev/null`
+            if [ "$expactivities" ]; then
+                echo -e "\e[00;33m[+] TVSettings has exported activities - potential unauthorized access\e[00m"
+            fi
+
+            #Check for system write permissions
+            sysperm=`dumpsys package com.android.tv.settings | grep "WRITE_SECURE_SETTINGS" 2>/dev/null`
+            if [ "$sysperm" ]; then
+                echo -e "\e[00;33m[+] TVSettings has system write permissions - potential settings manipulation\e[00m"
+            fi
+        fi
+    fi
+
+    #Check for CEC vulnerabilities (all versions)
+    if [ -d "/sys/devices/virtual/hdmi_cec" ]; then
+        cecperms=`ls -l /sys/devices/virtual/hdmi_cec 2>/dev/null`
+        if [ "$cecperms" ]; then
+            echo -e "\e[00;31m[-] HDMI-CEC permissions:\e[00m\n$cecperms"
+            
+            #Check for write access
+            cecwrite=`find /sys/devices/virtual/hdmi_cec -writable -type f 2>/dev/null`
+            if [ "$cecwrite" ]; then
+                echo -e "\e[00;33m[+] Writable CEC files found - potential CEC injection:\e[00m\n$cecwrite"
+            fi
+        fi
+    fi
+
+    #Remote app installation check (all versions)
+    unknownsources=`settings get secure install_non_market_apps 2>/dev/null`
+    if [ "$unknownsources" = "1" ]; then
+        echo -e "\e[00;33m[+] Unknown sources enabled - potential remote app installation\e[00m"
+        
+        #Check if debugging is also enabled
+        if [ "$adbstatus" = "running" ]; then
+            echo -e "\e[00;33m[+] ADB + Unknown sources - high risk of remote exploitation\e[00m"
+        fi
     fi
 fi
 }
@@ -630,6 +753,26 @@ if [ "$androidver" ]; then
     netsec=`find /data/data -name "network_security_config.xml" 2>/dev/null`
     if [ "$netsec" ]; then
         echo -e "\e[00;31m[-] Network security configurations:\e[00m\n$netsec"
+    fi
+fi
+
+if [ "$androidver" ] && [ "$tvinfo" = "tv" ]; then
+    #check remote debugging
+    adbnet=`getprop service.adb.tcp.port 2>/dev/null`
+    if [ "$adbnet" ]; then
+        echo -e "\e[00;33m[+] ADB over network is enabled on port:\e[00m\n$adbnet"
+    fi
+    
+    #check network debug settings
+    nettrace=`getprop debug.network 2>/dev/null`
+    if [ "$nettrace" ]; then
+        echo -e "\e[00;31m[-] Network debug configuration:\e[00m\n$nettrace"
+    fi
+    
+    #check Cast settings
+    cast=`dumpsys media_router 2>/dev/null`
+    if [ "$cast" ]; then
+        echo -e "\e[00;31m[-] Cast/media routing configuration:\e[00m\n$cast"
     fi
 fi
 }
@@ -1371,6 +1514,50 @@ if [ "$androidver" ]; then
         appwrite=`find /data/data -writable -type d 2>/dev/null`
         if [ "$appwrite" ]; then
             echo -e "\e[00;31m[-] Writable app directories:\e[00m\n$appwrite"
+        fi
+    fi
+fi
+
+if [ "$androidver" ]; then
+    #check for system apps with debug flags
+    debugapps=`pm list packages -f | grep -i "debuggable" 2>/dev/null`
+    if [ "$debugapps" ]; then
+        echo -e "\e[00;33m[+] Debuggable apps found:\e[00m\n$debugapps"
+    fi
+
+    #check for apps with backup enabled
+    backupapps=`pm list packages -f | grep -i "allowbackup" 2>/dev/null`
+    if [ "$backupapps" ]; then
+        echo -e "\e[00;31m[-] Apps with backup enabled:\e[00m\n$backupapps"
+    fi
+
+    #check for world-readable preference files
+    if [ "$thorough" = "1" ]; then
+        worldprefs=`find /data/data -name "*.xml" -perm -004 2>/dev/null`
+        if [ "$worldprefs" ]; then
+            echo -e "\e[00;33m[+] World-readable preference files:\e[00m\n$worldprefs"
+        fi
+    fi
+
+    #check accessibility services
+    accservices=`dumpsys accessibility 2>/dev/null`
+    if [ "$accservices" ]; then
+        echo -e "\e[00;31m[-] Accessibility Services:\e[00m\n$accservices"
+    fi
+
+    #TV-specific privilege escalation
+    if [ "$tvinfo" = "tv" ]; then
+        #check system customization provider
+        customprovider=`pm list packages -f com.android.tv.customization 2>/dev/null`
+        if [ "$customprovider" ]; then
+            echo -e "\e[00;31m[-] TV customization provider permissions:\e[00m"
+            dumpsys package com.android.tv.customization 2>/dev/null
+        fi
+
+        #check input service vulnerabilities 
+        inputservice=`dumpsys input 2>/dev/null`
+        if [ "$inputservice" ]; then
+            echo -e "\e[00;31m[-] Input service configuration:\e[00m\n$inputservice"
         fi
     fi
 fi

@@ -111,6 +111,27 @@ if [ "$hostnamed" ]; then
   echo -e "\e[00;31m[-] Hostname:\e[00m\n$hostnamed" 
   echo -e "\n" 
 fi
+
+#android/embedded system checks (fails gracefully on non-mobile)
+androidver=`getprop ro.build.version.release 2>/dev/null`
+if [ "$androidver" ]; then
+    echo -e "\e[00;31m[-] Android system information:\e[00m"
+    echo -e "Version: $androidver"
+    
+    #security patch level
+    patchlevel=`getprop ro.build.version.security_patch 2>/dev/null`
+    if [ "$patchlevel" ]; then
+        echo -e "Security Patch Level: $patchlevel"
+    fi
+    echo -e "\n"
+fi
+
+#embedded bootloader info (useful on any platform)
+bootinfo=`find /proc /sys /dev -name "boot*" -type f -exec ls -la {} \; 2>/dev/null`
+if [ "$bootinfo" ]; then
+    echo -e "\e[00;31m[-] Boot-related files:\e[00m\n$bootinfo"
+    echo -e "\n"
+fi
 }
 
 user_info()
@@ -564,6 +585,20 @@ if [ ! "$udpservs" ] && [ "$udpservsip" ]; then
   echo -e "\e[00;31m[-] Listening UDP:\e[00m\n$udpservsip" 
   echo -e "\n"
 fi
+
+#mobile/embedded network interfaces
+mobileif=`ls -la /sys/class/net/rmnet* 2>/dev/null; ls -la /sys/class/net/wwan* 2>/dev/null`
+if [ "$mobileif" ]; then
+    echo -e "\e[00;31m[-] Mobile network interfaces:\e[00m\n$mobileif" 
+    echo -e "\n"
+fi
+
+#wireless configuration
+wirelessconf=`ls -la /data/misc/wifi 2>/dev/null`
+if [ "$wirelessconf" ]; then
+    echo -e "\e[00;31m[-] Wireless configuration:\e[00m\n$wirelessconf"
+    echo -e "\n"
+fi
 }
 
 services_info()
@@ -696,6 +731,15 @@ systemdperms=`find /lib/systemd/ \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 
 if [ "$systemdperms" ]; then
    echo -e "\e[00;33m[+] /lib/systemd/* config files not belonging to root:\e[00m\n$systemdperms"
    echo -e "\n"
+fi
+
+#mobile/embedded service checks
+if [ "$thorough" = "1" ]; then
+    mobileservices=`service list 2>/dev/null`
+    if [ "$mobileservices" ]; then
+        echo -e "\e[00;31m[-] Mobile system services:\e[00m\n$mobileservices"
+        echo -e "\n"
+    fi
 fi
 }
 
@@ -1254,6 +1298,24 @@ fi
 if [ "$export" ] && [ "$readmailroot" ]; then
   mkdir $format/mail-from-root/ 2>/dev/null
   cp $readmailroot $format/mail-from-root/ 2>/dev/null
+fi
+
+#mobile/embedded storage locations
+if [ "$thorough" = "1" ]; then
+    echo -e "\e[00;31m[-] Checking mobile storage locations:\e[00m"
+    for storage in /storage/emulated /storage/sdcard0 /sdcard /data/media; do
+        if [ -d "$storage" ]; then
+            ls -la $storage 2>/dev/null
+        fi
+    done
+    echo -e "\n"
+    
+    #look for sensitive files in mobile locations
+    mobilesens=`find /data/data /storage -type f \( -name "*.db" -o -name "*.sqlite" -o -name "*.key" -o -name "*.conf" \) 2>/dev/null`
+    if [ "$mobilesens" ]; then
+        echo -e "\e[00;31m[-] Potentially sensitive files in mobile locations:\e[00m\n$mobilesens"
+        echo -e "\n"
+    fi
 fi
 }
 

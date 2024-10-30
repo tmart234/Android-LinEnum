@@ -132,6 +132,25 @@ if [ "$bootinfo" ]; then
     echo -e "\e[00;31m[-] Boot-related files:\e[00m\n$bootinfo"
     echo -e "\n"
 fi
+
+#check if we have root on Android
+if [ "$androidver" ]; then
+    id=`id 2>/dev/null`
+    if [ "$(echo $id | grep 'uid=0')" ]; then
+        echo -e "\e[00;33m[+] Running as root on Android!\e[00m"
+    fi
+    
+    #check if we're in an app context
+    if [ -d "/data/data/$(ps -o NAME= -p $$)" ]; then
+        echo -e "\e[00;31m[-] Running from app context:\e[00m $(ps -o NAME= -p $$)"
+    fi
+
+    #check security critical properties
+    secprops=`getprop | grep -E "ro.secure=|ro.debuggable=|ro.adb.secure=|persist.sys.usb.config" 2>/dev/null`
+    if [ "$secprops" ]; then
+        echo -e "\e[00;31m[-] Security-relevant Android properties:\e[00m\n$secprops"
+    fi
+fi
 }
 
 user_info()
@@ -599,6 +618,20 @@ if [ "$wirelessconf" ]; then
     echo -e "\e[00;31m[-] Wireless configuration:\e[00m\n$wirelessconf"
     echo -e "\n"
 fi
+
+if [ "$androidver" ]; then
+    #check for VPN configurations
+    vpnconf=`find /data/misc/vpn -type f 2>/dev/null`
+    if [ "$vpnconf" ]; then
+        echo -e "\e[00;31m[-] VPN configurations found:\e[00m\n$vpnconf"
+    fi
+    
+    #check network security configuration
+    netsec=`find /data/data -name "network_security_config.xml" 2>/dev/null`
+    if [ "$netsec" ]; then
+        echo -e "\e[00;31m[-] Network security configurations:\e[00m\n$netsec"
+    fi
+fi
 }
 
 services_info()
@@ -739,6 +772,14 @@ if [ "$thorough" = "1" ]; then
     if [ "$mobileservices" ]; then
         echo -e "\e[00;31m[-] Mobile system services:\e[00m\n$mobileservices"
         echo -e "\n"
+    fi
+fi
+
+if [ "$androidver" ] && [ "$thorough" = "1" ]; then
+    #check for potentially dangerous permissions
+    dangerousperms=`pm list packages -f -p "android.permission.WRITE_SECURE_SETTINGS|android.permission.WRITE_SETTINGS|android.permission.INSTALL_PACKAGES" 2>/dev/null`
+    if [ "$dangerousperms" ]; then
+        echo -e "\e[00;33m[+] Apps with dangerous permissions:\e[00m\n$dangerousperms"
     fi
 fi
 }
@@ -1315,6 +1356,22 @@ if [ "$thorough" = "1" ]; then
     if [ "$mobilesens" ]; then
         echo -e "\e[00;31m[-] Potentially sensitive files in mobile locations:\e[00m\n$mobilesens"
         echo -e "\n"
+    fi
+fi
+
+if [ "$androidver" ]; then
+    #check system partition mount flags
+    systemmount=`mount | grep " /system " 2>/dev/null`
+    if [ "$systemmount" ] && [ ! "$(echo $systemmount | grep 'ro')" ]; then
+        echo -e "\e[00;33m[+] System partition is writable!\e[00m"
+    fi
+    
+    #check for writable app directories
+    if [ "$thorough" = "1" ]; then
+        appwrite=`find /data/data -writable -type d 2>/dev/null`
+        if [ "$appwrite" ]; then
+            echo -e "\e[00;31m[-] Writable app directories:\e[00m\n$appwrite"
+        fi
     fi
 fi
 }

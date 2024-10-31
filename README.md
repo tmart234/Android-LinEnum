@@ -8,6 +8,12 @@ Note: Export functionality is currently in the experimental stage.
 
 General usage:
 
+you may have to format this file to run on Android device (it can have errors with last if statement):
+* tr -d '\r' < LinEnum.sh > LinEnum_fixed.sh
+* chmod 755 LinEnum_fixed.sh
+* sh LinEnum_fixed.sh
+
+
 version 0.99
 
 * Example: ./LinEnum.sh -s -k keyword -r report -e /tmp/ -t 

@@ -425,9 +425,9 @@ fi
 
 #looks for world-reabable files within /home - depending on number of /home dirs & files, this can take some time so is only 'activated' with thorough scanning switch
 if [ "$thorough" = "1" ]; then
-wrfileshm=`find /home/ -perm -4 -type f -exec ls -al {} \; 2>/dev/null`
+wrfileshm=`find /data/data -perm -o+r -type d 2>/dev/null`
 	if [ "$wrfileshm" ]; then
-		echo -e "${RED}[-] World-readable files within /home:${RESET}\n$wrfileshm" 
+		echo -e "${RED}[-] World-readable files within /data:${RESET}\n$wrfileshm" 
 		echo -e "\n"
 	fi
 fi
@@ -1496,45 +1496,6 @@ if [ "$thorough" = "1" ]; then
 fi
 }
 
-docker_checks()
-{
-
-#specific checks - check to see if we're in a docker container
-dockercontainer=` grep -i docker /proc/self/cgroup  2>/dev/null; find / -name "*dockerenv*" -exec ls -la {} \; 2>/dev/null`
-if [ "$dockercontainer" ]; then
-  echo -e "${YELLOW}[+] Looks like we're in a Docker container:${RESET}\n$dockercontainer" 
-  echo -e "\n"
-fi
-
-#specific checks - check to see if we're a docker host
-dockerhost=`docker --version 2>/dev/null; docker ps -a 2>/dev/null`
-if [ "$dockerhost" ]; then
-  echo -e "${YELLOW}[+] Looks like we're hosting Docker:${RESET}\n$dockerhost" 
-  echo -e "\n"
-fi
-
-#specific checks - are we a member of the docker group
-dockergrp=`id | grep -i docker 2>/dev/null`
-if [ "$dockergrp" ]; then
-  echo -e "${YELLOW}[+] We're a member of the (docker) group - could possibly misuse these rights!${RESET}\n$dockergrp" 
-  echo -e "\n"
-fi
-
-#specific checks - are there any docker files present
-dockerfiles=`find / -name Dockerfile -exec ls -l {} 2>/dev/null \;`
-if [ "$dockerfiles" ]; then
-  echo -e "${RED}[-] Anything juicy in the Dockerfile:${RESET}\n$dockerfiles" 
-  echo -e "\n"
-fi
-
-#specific checks - are there any docker files present
-dockeryml=`find / -name docker-compose.yml -exec ls -l {} 2>/dev/null \;`
-if [ "$dockeryml" ]; then
-  echo -e "${RED}[-] Anything juicy in docker-compose.yml:${RESET}\n$dockeryml" 
-  echo -e "\n"
-fi
-}
-
 footer()
 {
 echo -e "${YELLOW}### SCAN COMPLETE ####################################${RESET}" 
@@ -1552,7 +1513,6 @@ call_each()
   services_info
   software_configs
   interesting_files
-  #docker_checks
   footer
 }
 

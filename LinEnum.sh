@@ -845,12 +845,12 @@ fi
 
 if [ "$androidver" ]; then
     #check for potentially dangerous permissions
-    dangerousperms=`dumpsys package | grep -E "dangerous" 2>/dev/null`
+    dangerousperms=`dumpsys package | grep -B 2 "permission.*dangerous" 2>/dev/null | grep -v "android.permission.READ_PHONE_STATE"`
     if [ "$dangerousperms" ]; then
         echo -e "${RED}[-] Apps with dangerous permissions:${RESET}\n$dangerousperms"
         echo -e "\n"
     fi
-    signatureperms=`dumpsys package | grep -E "signature" 2>/dev/null`
+    signatureperms=`dumpsys package | grep -B 2 "permission.*signatureOrSystem" 2>/dev/null`
     if [ "$signatureperms" ]; then
         echo -e "${RED}[-] Apps with signature permissions:${RESET}\n$signatureperms"
         echo -e "\n"
@@ -1063,13 +1063,6 @@ fi
 if [ "$export" ] && [ "$fileswithcaps" ]; then
   mkdir $format/files_with_capabilities/ 2>/dev/null
   for i in $fileswithcaps; do cp $i $format/files_with_capabilities/; done 2>/dev/null
-fi
-
-#check app permissions
-appperms=`dumpsys package 2>/dev/null | grep -E "permission\.|grantedPermissions"`
-if [ "$appperms" ]; then
-    echo -e "${RED}[-] Granted permissions:${RESET}\n$appperms"
-    echo -e "\n"
 fi
 
 if [ "$userswithcaps" ] ; then

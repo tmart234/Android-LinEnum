@@ -169,60 +169,67 @@ if [ "$androidver" ]; then
         fi
 
         #check for TV-specific vulnerabilities based on version
-        case "$androidver" in
-            "10")
-                #MediaProjection checks
-                projperms=`dumpsys media_projection 2>/dev/null`
-                if [ "$projperms" ]; then
-                    echo -e "\e[00;33m[+] Potential MediaProjection vulnerability\e[00m"
-                fi
-                ;;
-            "8"|"8.1"|"9")
-                #Launcher vulnerability checks
-                launcherperm=`pm list packages -f com.google.android.tvlauncher 2>/dev/null`
-                if [ "$launcherperm" ] && grep -q "CUSTOM_INTENT" <(dumpsys package com.google.android.tvlauncher 2>/dev/null); then
+        if [ "$androidver" = "10" ]; then
+            #MediaProjection checks
+            projperms=`dumpsys media_projection 2>/dev/null`
+            if [ "$projperms" ]; then
+                echo -e "\e[00;33m[+] Potential MediaProjection vulnerability\e[00m"
+            fi
+        fi
+
+        if [ "$androidver" = "9" ] || [ "$androidver" = "8" ] || [ "$androidver" = "8.1" ]; then
+            #Launcher vulnerability checks
+            launcherperm=`pm list packages -f com.google.android.tvlauncher 2>/dev/null`
+            if [ "$launcherperm" ]; then
+                if dumpsys package com.google.android.tvlauncher 2>/dev/null | grep -q "CUSTOM_INTENT"; then
                     echo -e "\e[00;33m[+] TV Launcher vulnerable to privilege escalation\e[00m"
                 fi
+            fi
 
-                #Check for known Intent redirection vulnerability
-                activitycheck=`dumpsys package com.google.android.tvlauncher | grep -A5 "Activity" | grep "android:exported=true" 2>/dev/null`
-                if [ "$activitycheck" ]; then
-                    echo -e "\e[00;33m[+] TV Launcher has exposed activities - potential intent redirection\e[00m"
-                fi
+            #Check for known Intent redirection vulnerability
+            activitycheck=`dumpsys package com.google.android.tvlauncher | grep -A5 "Activity" | grep "android:exported=true" 2>/dev/null`
+            if [ "$activitycheck" ]; then
+                echo -e "\e[00;33m[+] TV Launcher has exposed activities - potential intent redirection\e[00m"
+            fi
+        fi
 
-                #Check for SetupActivity vulnerability (8.0, 8.1)
-                if [ "$androidver" = "8" ] || [ "$androidver" = "8.1" ]; then
-                    setupact=`dumpsys package com.google.android.tvlauncher | grep -A2 "SetupActivity" | grep "exported=true" 2>/dev/null`
-                    if [ "$setupact" ]; then
-                        echo -e "\e[00;33m[+] TV Launcher Setup Activity vulnerability present\e[00m"
-                    fi
+        #Additional checks for Android 8.x
+        if [ "$androidver" = "8" ] || [ "$androidver" = "8.1" ]; then
+            #Check for SetupActivity vulnerability
+            setupact=`dumpsys package com.google.android.tvlauncher | grep -A2 "SetupActivity" | grep "exported=true" 2>/dev/null`
+            if [ "$setupact" ]; then
+                echo -e "\e[00;33m[+] TV Launcher Setup Activity vulnerability present\e[00m"
+            fi
 
-                    #Check for TvSettings privilege escalation
-                    tvsettings=`dumpsys package com.android.tv.settings | grep -A2 "WRITE_SECURE_SETTINGS" 2>/dev/null`
-                    if [ "$tvsettings" ]; then
-                        echo -e "\e[00;33m[+] TvSettings has elevated permissions - potential privilege escalation\e[00m"
-                    fi
+            #Check for TvSettings privilege escalation
+            tvsettings=`dumpsys package com.android.tv.settings | grep -A2 "WRITE_SECURE_SETTINGS" 2>/dev/null`
+            if [ "$tvsettings" ]; then
+                echo -e "\e[00;33m[+] TvSettings has elevated permissions - potential privilege escalation\e[00m"
+            fi
 
-                    #Check for unprotected broadcast receivers
-                    broadcasts=`dumpsys package com.google.android.tvlauncher | grep -A5 "Receiver" | grep -E "INSTALL_PACKAGES|DELETE_PACKAGES" 2>/dev/null`
-                    if [ "$broadcasts" ]; then
-                        echo -e "\e[00;33m[+] TV Launcher has vulnerable broadcast receivers\e[00m"
-                    fi
-                fi
+            #Check for unprotected broadcast receivers
+            broadcasts=`dumpsys package com.google.android.tvlauncher | grep -A5 "Receiver" | grep -E "INSTALL_PACKAGES|DELETE_PACKAGES" 2>/dev/null`
+            if [ "$broadcasts" ]; then
+                echo -e "\e[00;33m[+] TV Launcher has vulnerable broadcast receivers\e[00m"
+            fi
 
-                #Check for content provider exposure (8.x specific)
-                providers=`dumpsys package com.google.android.tvlauncher | grep -A5 "Provider" | grep "android:exported=true" 2>/dev/null`
-                if [ "$providers" ]; then
-                    echo -e "\e[00;33m[+] TV Launcher has exposed content providers\e[00m"
-                fi
-                ;;
-        esac
+            #Check for content provider exposure (8.x specific)
+            providers=`dumpsys package com.google.android.tvlauncher | grep -A5 "Provider" | grep "android:exported=true" 2>/dev/null`
+            if [ "$providers" ]; then
+                echo -e "\e[00;33m[+] TV Launcher has exposed content providers\e[00m"
+            fi
+        fi
 
         #Common checks for all TV versions
         if [ "$thorough" = "1" ]; then
             settingscheck=`dumpsys package com.android.tv.settings 2>/dev/null`
-            if echo "$settingscheck" | grep -q "WRITE_SECURE_SETTINGS\|android:exported=\"true\""; then
-                echo -e "\e[00;33m[+] TVSettings has dangerous configurations\e[00m"
+            if [ "$settingscheck" ]; then
+                if echo "$settingscheck" | grep -q "WRITE_SECURE_SETTINGS"; then
+                    echo -e "\e[00;33m[+] TVSettings has dangerous configurations\e[00m"
+                fi
+                if echo "$settingscheck" | grep -q "android:exported=\"true\""; then
+                    echo -e "\e[00;33m[+] TVSettings has exposed components\e[00m"
+                fi
             fi
         fi
     fi
@@ -230,8 +237,10 @@ if [ "$androidver" ]; then
 
     #check if we have root
     id=`id 2>/dev/null`
-    if [ "$(echo $id | grep 'uid=0')" ]; then
-        echo -e "\e[00;33m[+] Running as root on Android!\e[00m"
+    if [ "$id" ]; then
+        if echo "$id" | grep -q "uid=0"; then
+            echo -e "\e[00;33m[+] Running as root on Android!\e[00m"
+        fi
     fi
     
     #check if we're in an app context
@@ -498,14 +507,16 @@ if [ "$envinfo" ]; then
 fi
 
 #check if selinux is enabled - compatible with Android
-if command -v sestatus >/dev/null 2>&1; then
-  sestatus=`sestatus 2>/dev/null`
-  echo -e "\e[00;31m[-] SELinux status (Linux):\e[00m\n$sestatus"
-  echo -e "\n"
-elif command -v getenforce >/dev/null 2>&1; then
-  selinux_status=`getenforce 2>/dev/null`
-  echo -e "\e[00;31m[-] SELinux status (Android):\e[00m\n$selinux_status"
-  echo -e "\n"
+sestatus=`sestatus 2>/dev/null`
+if [ "$sestatus" ]; then
+    echo -e "\e[00;31m[-] SELinux status (Linux):\e[00m\n$sestatus"
+    echo -e "\n"
+fi
+
+getenforce=`getenforce 2>/dev/null`
+if [ "$getenforce" ]; then
+    echo -e "\e[00;31m[-] SELinux status (Android):\e[00m\n$getenforce"
+    echo -e "\n"
 fi
 
 #phackt
@@ -519,17 +530,22 @@ if [ "$pathinfo" ]; then
   echo -e "\n"
 fi
 
-#lists available shells - compatible with both Android
+
+#lists available shells - compatible with both Android and Linux
 echo -e "\e[00;31m[-] Available shells:\e[00m"
 if [ -f "/etc/shells" ]; then
-  cat /etc/shells 2>/dev/null
+    cat /etc/shells 2>/dev/null
 fi
-# Check common shell locations for Android and Linux
-for shell_path in "/system/bin" "/bin" "/usr/bin"; do
-  if [ -d "$shell_path" ]; then
-    ls -l $shell_path/*sh 2>/dev/null
-  fi
-done
+#Check common shell locations individually
+if [ -d "/system/bin" ]; then
+    ls -l /system/bin/*sh 2>/dev/null
+fi
+if [ -d "/bin" ]; then
+    ls -l /bin/*sh 2>/dev/null
+fi
+if [ -d "/usr/bin" ]; then
+    ls -l /usr/bin/*sh 2>/dev/null
+fi
 echo -e "\n"
 
 #current umask value with both octal and symbolic output
@@ -1295,18 +1311,20 @@ if [ "$export" ] && [ "$fstabcred" ]; then
   cp /etc/fstab $format/etc-exports/fstab done 2>/dev/null
 fi
 
-#use supplied keyword and cat *.conf files for potential matches - output will show line number within relevant file path where a match has been located
-if [ "$keyword" = "" ]; then
-  echo -e "[-] Can't search *.conf files as no keyword was entered\n" 
-  else
+#use supplied keyword and cat *.conf files for potential matches
+if [ "$keyword" = "" ]
+then
+    echo -e "[-] Can't search *.conf files as no keyword was entered\n"
+else
     confkey=`find / -maxdepth 4 -name *.conf -type f -exec grep -Hn $keyword {} \; 2>/dev/null`
-    if [ "$confkey" ]; then
-      echo -e "\e[00;31m[-] Find keyword ($keyword) in .conf files (recursive 4 levels - output format filepath:identified line number where keyword appears):\e[00m\n$confkey" 
-      echo -e "\n" 
-     else 
-	echo -e "\e[00;31m[-] Find keyword ($keyword) in .conf files (recursive 4 levels):\e[00m" 
-	echo -e "'$keyword' not found in any .conf files" 
-	echo -e "\n" 
+    if [ "$confkey" ]
+    then
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .conf files (recursive 4 levels - output format filepath:identified line number where keyword appears):\e[00m\n$confkey"
+        echo -e "\n"
+    else
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .conf files (recursive 4 levels):\e[00m"
+        echo -e "'$keyword' not found in any .conf files"
+        echo -e "\n"
     fi
 fi
 
@@ -1320,18 +1338,20 @@ if [ "$keyword" = "" ]; then
   fi
 fi
 
-#use supplied keyword and cat *.php files for potential matches - output will show line number within relevant file path where a match has been located
-if [ "$keyword" = "" ]; then
-  echo -e "[-] Can't search *.php files as no keyword was entered\n" 
-  else
+#use supplied keyword and cat *.php files for potential matches
+if [ "$keyword" = "" ]
+then
+    echo -e "[-] Can't search *.php files as no keyword was entered\n"
+else
     phpkey=`find / -maxdepth 10 -name *.php -type f -exec grep -Hn $keyword {} \; 2>/dev/null`
-    if [ "$phpkey" ]; then
-      echo -e "\e[00;31m[-] Find keyword ($keyword) in .php files (recursive 10 levels - output format filepath:identified line number where keyword appears):\e[00m\n$phpkey" 
-      echo -e "\n" 
-     else 
-  echo -e "\e[00;31m[-] Find keyword ($keyword) in .php files (recursive 10 levels):\e[00m" 
-  echo -e "'$keyword' not found in any .php files" 
-  echo -e "\n" 
+    if [ "$phpkey" ]
+    then
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .php files (recursive 10 levels - output format filepath:identified line number where keyword appears):\e[00m\n$phpkey"
+        echo -e "\n"
+    else
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .php files (recursive 10 levels):\e[00m"
+        echo -e "'$keyword' not found in any .php files"
+        echo -e "\n"
     fi
 fi
 
@@ -1346,17 +1366,19 @@ if [ "$keyword" = "" ]; then
 fi
 
 #use supplied keyword and cat *.log files for potential matches - output will show line number within relevant file path where a match has been located
-if [ "$keyword" = "" ];then
-  echo -e "[-] Can't search *.log files as no keyword was entered\n" 
-  else
+if [ "$keyword" = "" ]
+then
+    echo -e "[-] Can't search *.log files as no keyword was entered\n"
+else
     logkey=`find / -maxdepth 4 -name *.log -type f -exec grep -Hn $keyword {} \; 2>/dev/null`
-    if [ "$logkey" ]; then
-      echo -e "\e[00;31m[-] Find keyword ($keyword) in .log files (recursive 4 levels - output format filepath:identified line number where keyword appears):\e[00m\n$logkey" 
-      echo -e "\n" 
-     else 
-	echo -e "\e[00;31m[-] Find keyword ($keyword) in .log files (recursive 4 levels):\e[00m" 
-	echo -e "'$keyword' not found in any .log files"
-	echo -e "\n" 
+    if [ "$logkey" ]
+    then
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .log files (recursive 4 levels - output format filepath:identified line number where keyword appears):\e[00m\n$logkey"
+        echo -e "\n"
+    else
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .log files (recursive 4 levels):\e[00m"
+        echo -e "'$keyword' not found in any .log files"
+        echo -e "\n"
     fi
 fi
 
@@ -1371,17 +1393,19 @@ if [ "$keyword" = "" ];then
 fi
 
 #use supplied keyword and cat *.ini files for potential matches - output will show line number within relevant file path where a match has been located
-if [ "$keyword" = "" ];then
-  echo -e "[-] Can't search *.ini files as no keyword was entered\n" 
-  else
+if [ "$keyword" = "" ]
+then
+    echo -e "[-] Can't search *.ini files as no keyword was entered\n"
+else
     inikey=`find / -maxdepth 4 -name *.ini -type f -exec grep -Hn $keyword {} \; 2>/dev/null`
-    if [ "$inikey" ]; then
-      echo -e "\e[00;31m[-] Find keyword ($keyword) in .ini files (recursive 4 levels - output format filepath:identified line number where keyword appears):\e[00m\n$inikey" 
-      echo -e "\n" 
-     else 
-	echo -e "\e[00;31m[-] Find keyword ($keyword) in .ini files (recursive 4 levels):\e[00m" 
-	echo -e "'$keyword' not found in any .ini files" 
-	echo -e "\n"
+    if [ "$inikey" ]
+    then
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .ini files (recursive 4 levels - output format filepath:identified line number where keyword appears):\e[00m\n$inikey"
+        echo -e "\n"
+    else
+        echo -e "\e[00;31m[-] Find keyword ($keyword) in .ini files (recursive 4 levels):\e[00m"
+        echo -e "'$keyword' not found in any .ini files"
+        echo -e "\n"
     fi
 fi
 
@@ -1466,18 +1490,32 @@ if [ "$export" ] && [ "$readmailroot" ]; then
 fi
 
 #mobile/embedded storage locations
-if [ "$thorough" = "1" ]; then
+if [ "$thorough" = "1" ]
+then
     echo -e "\e[00;31m[-] Checking mobile storage locations:\e[00m"
-    for storage in /storage/emulated /storage/sdcard0 /sdcard /data/media; do
-        if [ -d "$storage" ]; then
-            ls -la $storage 2>/dev/null
-        fi
-    done
+    # Check each storage location individually
+    if [ -d "/storage/emulated" ]
+    then
+        ls -la /storage/emulated 2>/dev/null
+    fi
+    if [ -d "/storage/sdcard0" ]
+    then
+        ls -la /storage/sdcard0 2>/dev/null
+    fi
+    if [ -d "/sdcard" ]
+    then
+        ls -la /sdcard 2>/dev/null
+    fi
+    if [ -d "/data/media" ]
+    then
+        ls -la /data/media 2>/dev/null
+    fi
     echo -e "\n"
     
     #look for sensitive files in mobile locations
     mobilesens=`find /data/data /storage -type f \( -name "*.db" -o -name "*.sqlite" -o -name "*.key" -o -name "*.conf" \) 2>/dev/null`
-    if [ "$mobilesens" ]; then
+    if [ "$mobilesens" ]
+    then
         echo -e "\e[00;31m[-] Potentially sensitive files in mobile locations:\e[00m\n$mobilesens"
         echo -e "\n"
     fi
@@ -1623,16 +1661,15 @@ call_each()
   footer
 }
 
-while getopts "h:k:r:e:st" option; do
- case "${option}" in
-    k) keyword=${OPTARG};;
-    r) report=${OPTARG}"-"`date +"%d-%m-%y"`;;
-    e) export=${OPTARG};;
-    s) sudopass=1;;
-    t) thorough=1;;
-    h) usage; exit;;
-    *) usage; exit;;
- esac
+while getopts "h:k:r:e:st" option
+do 
+    if [ "$option" = "k" ]; then keyword=$OPTARG; fi
+    if [ "$option" = "r" ]; then report=$OPTARG-`date +"%d-%m-%y"`; fi
+    if [ "$option" = "e" ]; then export=$OPTARG; fi
+    if [ "$option" = "s" ]; then sudopass=1; fi
+    if [ "$option" = "t" ]; then thorough=1; fi
+    if [ "$option" = "h" ]; then usage; exit; fi
+    if [ "$option" = "*" ]; then usage; exit; fi
 done
 
 call_each | tee -a $report 2> /dev/null

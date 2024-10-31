@@ -2,7 +2,7 @@
 #A script to enumerate local information from a Linux host
 version="version 0.99"
 #@rebootuser
-# you may have to format this file to run on Android device:
+# you may have to format this file to run on Android device (it can have errors with last if statement):
 # tr -d '\r' < LinEnum.sh > LinEnum_fixed.sh
 # chmod 755 LinEnum_fixed.sh
 # sh LinEnum_fixed.sh
@@ -138,11 +138,31 @@ if [ "$procver" ]; then
   echo -e "\n" 
 fi
 
-#search all *-release files for version info
-release=`cat /etc/*-release 2>/dev/null`
-if [ "$release" ]; then
-  echo -e "\e[00;31m[-] Specific release information:\e[00m\n$release" 
-  echo -e "\n" 
+# Android build info:
+buildinfo=`getprop ro.build.fingerprint 2>/dev/null`
+if [ "$buildinfo" ]; then
+    echo -e "\e[00;31m[-] Build fingerprint:\e[00m\n$buildinfo"
+    echo -e "\n"
+fi
+
+# device info
+boardinfo=`getprop ro.product.board 2>/dev/null`
+if [ "$boardinfo" ]; then
+    echo -e "\e[00;31m[-] Device information:\e[00m\n$boardinfo"
+    echo -e "\n"
+fi
+
+# Android-specific security checks:
+verityinfo=`getprop ro.boot.veritymode 2>/dev/null`
+if [ "$verityinfo" ]; then
+    echo -e "\e[00;31m[-] Verified boot status:\e[00m\n$verityinfo"
+    echo -e "\n"
+fi
+
+bootloaderinfo=`getprop ro.boot.flash.locked 2>/dev/null`
+if [ "$bootloaderinfo" ]; then
+    echo -e "\e[00;31m[-] Bootloader lock status:\e[00m\n$bootloaderinfo"
+    echo -e "\n"
 fi
 
 #target hostname info
@@ -284,24 +304,10 @@ user_info()
 {
 echo -e "\e[00;33m### USER/GROUP ##########################################\e[00m" 
 
-#current user details
-currusr=`id 2>/dev/null`
-if [ "$currusr" ]; then
-  echo -e "\e[00;31m[-] Current user/group info:\e[00m\n$currusr" 
-  echo -e "\n"
-fi
-
-#last logged on user information
-lastlogedonusrs=`lastlog 2>/dev/null |grep -v "Never" 2>/dev/null`
-if [ "$lastlogedonusrs" ]; then
-  echo -e "\e[00;31m[-] Users that have previously logged onto the system:\e[00m\n$lastlogedonusrs" 
-  echo -e "\n" 
-fi
-
-#who else is logged on
-loggedonusrs=`w 2>/dev/null`
-if [ "$loggedonusrs" ]; then
-  echo -e "\e[00;31m[-] Who else is logged on:\e[00m\n$loggedonusrs" 
+#current processes and users
+psinfo=`ps -ef 2>/dev/null`
+if [ "$psinfo" ]; then
+  echo -e "\e[00;31m[-] Current processes and users:\e[00m\n$psinfo" 
   echo -e "\n"
 fi
 
@@ -511,6 +517,7 @@ if [ "$thorough" = "1" ]; then
 	fi
 fi
 
+#TODO: remove root?
 #is root permitted to login via ssh
 sshrootlogin=`grep "PermitRootLogin " /etc/ssh/sshd_config 2>/dev/null | grep -v "#" | awk '{print  $2}'`
 if [ "$sshrootlogin" = "yes" ]; then
@@ -530,13 +537,7 @@ if [ "$envinfo" ]; then
   echo -e "\n"
 fi
 
-#check if selinux is enabled - compatible with Android
-sestatus=`sestatus 2>/dev/null`
-if [ "$sestatus" ]; then
-    echo -e "\e[00;31m[-] SELinux status (Linux):\e[00m\n$sestatus"
-    echo -e "\n"
-fi
-
+#check if selinux is enabled (android version)
 getenforce=`getenforce 2>/dev/null`
 if [ "$getenforce" ]; then
     echo -e "\e[00;31m[-] SELinux status (Android):\e[00m\n$getenforce"
@@ -602,19 +603,11 @@ fi
 job_info()
 {
 echo -e "\e[00;33m### JOBS/TASKS ##########################################\e[00m" 
-
-#are there any cron jobs configured
-cronjobs=`ls -la /etc/cron* 2>/dev/null`
-if [ "$cronjobs" ]; then
-  echo -e "\e[00;31m[-] Cron jobs:\e[00m\n$cronjobs" 
-  echo -e "\n"
-fi
-
-#can we manipulate these jobs in any way
-cronjobwwperms=`find /etc/cron* -perm -0002 -type f -exec ls -la {} \; -exec cat {} 2>/dev/null \;`
-if [ "$cronjobwwperms" ]; then
-  echo -e "\e[00;33m[+] World-writable cron jobs and file contents:\e[00m\n$cronjobwwperms" 
-  echo -e "\n"
+#check scheduled jobs
+scheduledjobs=`dumpsys jobscheduler 2>/dev/null`
+if [ "$scheduledjobs" ]; then
+    echo -e "\e[00;31m[-] Scheduled jobs:\e[00m\n$scheduledjobs"
+    echo -e "\n"
 fi
 
 #contab contents
@@ -671,7 +664,7 @@ networking_info()
 echo -e "\e[00;33m### NETWORKING  ##########################################\e[00m" 
 
 #nic information
-nicinfo=`/sbin/ifconfig -a 2>/dev/null`
+nicinfo=`/sbin/ip -a 2>/dev/null`
 if [ "$nicinfo" ]; then
   echo -e "\e[00;31m[-] Network and IP info:\e[00m\n$nicinfo" 
   echo -e "\n"
@@ -777,7 +770,7 @@ if [ "$androidver" ]; then
     fi
 fi
 
-if [ "$androidver" ] && [ "$tvinfo" = "tv" ]; then
+if [ "$androidver" ]; then
     #check remote debugging
     adbnet=`getprop service.adb.tcp.port 2>/dev/null`
     if [ "$adbnet" ]; then
@@ -796,16 +789,23 @@ if [ "$androidver" ] && [ "$tvinfo" = "tv" ]; then
         echo -e "\e[00;31m[-] Cast/media routing configuration:\e[00m\n$cast"
     fi
 fi
+
+#check network properties
+netprops=`getprop | grep -E "net.|wifi.|dhcp." 2>/dev/null`
+if [ "$netprops" ]; then
+  echo -e "\e[00;31m[-] Network properties:\e[00m\n$netprops" 
+  echo -e "\n"
+fi
 }
 
 services_info()
 {
 echo -e "\e[00;33m### SERVICES #############################################\e[00m" 
 
-#running processes
-psaux=`ps aux 2>/dev/null`
+#running processes with package names
+psaux=`ps -ef | grep "u0_" 2>/dev/null`
 if [ "$psaux" ]; then
-  echo -e "\e[00;31m[-] Running processes:\e[00m\n$psaux" 
+  echo -e "\e[00;31m[-] Running app processes:\e[00m\n$psaux" 
   echo -e "\n"
 fi
 
@@ -865,30 +865,16 @@ if [ "$xinetdbinperms" ]; then
   echo -e "\n"
 fi
 
-initdread=`ls -la /etc/init.d 2>/dev/null`
-if [ "$initdread" ]; then
-  echo -e "\e[00;31m[-] /etc/init.d/ binary permissions:\e[00m\n$initdread" 
-  echo -e "\n"
+services=`dumpsys activity services 2>/dev/null`
+if [ "$services" ]; then
+    echo -e "\e[00;31m[-] Running services:\e[00m\n$services"
+    echo -e "\n"
 fi
 
-#init.d files NOT belonging to root!
-initdperms=`find /etc/init.d/ \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
-if [ "$initdperms" ]; then
-  echo -e "\e[00;31m[-] /etc/init.d/ files not belonging to root:\e[00m\n$initdperms" 
-  echo -e "\n"
-fi
-
-rcdread=`ls -la /etc/rc.d/init.d 2>/dev/null`
-if [ "$rcdread" ]; then
-  echo -e "\e[00;31m[-] /etc/rc.d/init.d binary permissions:\e[00m\n$rcdread" 
-  echo -e "\n"
-fi
-
-#init.d files NOT belonging to root!
-rcdperms=`find /etc/rc.d/init.d \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
-if [ "$rcdperms" ]; then
-  echo -e "\e[00;31m[-] /etc/rc.d/init.d files not belonging to root:\e[00m\n$rcdperms" 
-  echo -e "\n"
+broadcasts=`dumpsys activity broadcasts 2>/dev/null`
+if [ "$broadcasts" ]; then
+    echo -e "\e[00;31m[-] Registered broadcasts:\e[00m\n$broadcasts"
+    echo -e "\n"
 fi
 
 usrrcdread=`ls -la /usr/local/etc/rc.d 2>/dev/null`
@@ -917,12 +903,6 @@ if [ "$initperms" ]; then
    echo -e "\n"
 fi
 
-systemdread=`ls -lthR /lib/systemd/ 2>/dev/null`
-if [ "$systemdread" ]; then
-  echo -e "\e[00;31m[-] /lib/systemd/* config file permissions:\e[00m\n$systemdread"
-  echo -e "\n"
-fi
-
 # systemd files not belonging to root
 systemdperms=`find /lib/systemd/ \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
 if [ "$systemdperms" ]; then
@@ -930,20 +910,31 @@ if [ "$systemdperms" ]; then
    echo -e "\n"
 fi
 
-#mobile/embedded service checks
-if [ "$thorough" = "1" ]; then
-    mobileservices=`service list 2>/dev/null`
-    if [ "$mobileservices" ]; then
-        echo -e "\e[00;31m[-] Mobile system services:\e[00m\n$mobileservices"
-        echo -e "\n"
-    fi
+#check running services
+servicesinfo=`service list 2>/dev/null`
+if [ "$servicesinfo" ]; then
+  echo -e "\e[00;31m[-] Running services:\e[00m\n$servicesinfo" 
+  echo -e "\n"
+fi
+
+#check running packages
+packagesinfo=`pm list packages -f 2>/dev/null`
+if [ "$packagesinfo" ]; then
+  echo -e "\e[00;31m[-] Installed packages:\e[00m\n$packagesinfo" 
+  echo -e "\n"
 fi
 
 if [ "$androidver" ] && [ "$thorough" = "1" ]; then
     #check for potentially dangerous permissions
-    dangerousperms=`pm list packages -f -p "android.permission.WRITE_SECURE_SETTINGS|android.permission.WRITE_SETTINGS|android.permission.INSTALL_PACKAGES" 2>/dev/null`
+    dangerousperms=`dumpsys package | grep -E "dangerous" 2>/dev/null`
     if [ "$dangerousperms" ]; then
-        echo -e "\e[00;33m[+] Apps with dangerous permissions:\e[00m\n$dangerousperms"
+        echo -e "\e[00;31m[-] Apps with dangerous permissions:\e[00m\n$dangerousperms"
+        echo -e "\n"
+    fi
+    signatureperms=`dumpsys package | grep -E "signature" 2>/dev/null`
+    if [ "$signatureperms" ]; then
+        echo -e "\e[00;31m[-] Apps with signature permissions:\e[00m\n$signatureperms"
+        echo -e "\n"
     fi
 fi
 }
@@ -1054,6 +1045,13 @@ if [ "$thorough" = "1" ]; then
   fi
 fi
 
+#check app configs
+appconfigs=`find /data/data -name "*.xml" -type f 2>/dev/null`
+if [ "$appconfigs" ]; then
+  echo -e "\e[00;31m[-] App configuration files:\e[00m\n$appconfigs" 
+  echo -e "\n"
+fi
+
 }
 
 interesting_files()
@@ -1076,7 +1074,7 @@ echo -e "\e[00;31m[-] Can we read/write sensitive files:\e[00m" ; ls -la /etc/pa
 echo -e "\n" 
 
 #search for suid files
-allsuid=`find / -perm -4000 -type f 2>/dev/null`
+allsuid=`find /system /vendor /data -perm -4000 -type f 2>/dev/null`
 findsuid=`find $allsuid -perm -4000 -type f -exec ls -la {} 2>/dev/null \;`
 if [ "$findsuid" ]; then
   echo -e "\e[00;31m[-] SUID files:\e[00m\n$findsuid" 
@@ -1155,11 +1153,11 @@ if [ "$export" ] && [ "$fileswithcaps" ]; then
   for i in $fileswithcaps; do cp $i $format/files_with_capabilities/; done 2>/dev/null
 fi
 
-#searches /etc/security/capability.conf for users associated capapilies
-userswithcaps=`grep -v '^#\|none\|^$' /etc/security/capability.conf 2>/dev/null`
-if [ "$userswithcaps" ]; then
-  echo -e "\e[00;33m[+] Users with specific POSIX capabilities:\e[00m\n$userswithcaps"
-  echo -e "\n"
+#check app permissions
+appperms=`dumpsys package 2>/dev/null | grep -E "permission\.|grantedPermissions"`
+if [ "$appperms" ]; then
+    echo -e "\e[00;31m[-] Granted permissions:\e[00m\n$appperms"
+    echo -e "\n"
 fi
 
 if [ "$userswithcaps" ] ; then
@@ -1455,16 +1453,11 @@ if [ "$export" ] && [ "$allconf" ]; then
   for i in $allconf; do cp --parents $i $format/conf-files/; done 2>/dev/null
 fi
 
-#extract any user history files that are accessible
-usrhist=`ls -la ~/.*_history 2>/dev/null`
-if [ "$usrhist" ]; then
-  echo -e "\e[00;31m[-] Current user's history files:\e[00m\n$usrhist" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$usrhist" ]; then
-  mkdir $format/history_files/ 2>/dev/null
-  for i in $usrhist; do cp --parents $i $format/history_files/; done 2>/dev/null
+#check command history in shell
+if [ -f "/data/local/tmp/.sh_history" ]; then
+    echo -e "\e[00;31m[-] Shell history:\e[00m"
+    cat /data/local/tmp/.sh_history 2>/dev/null
+    echo -e "\n"
 fi
 
 #can we read roots *_history files - could be passwords stored etc.
@@ -1492,25 +1485,6 @@ if [ "$bakfiles" ]; then
   echo -e "\e[00;31m[-] Location and Permissions (if accessible) of .bak file(s):\e[00m"
   for bak in `echo $bakfiles`; do ls -la $bak;done
   echo -e "\n"
-fi
-
-#is there any mail accessible
-readmail=`ls -la /var/mail 2>/dev/null`
-if [ "$readmail" ]; then
-  echo -e "\e[00;31m[-] Any interesting mail in /var/mail:\e[00m\n$readmail" 
-  echo -e "\n"
-fi
-
-#can we read roots mail
-readmailroot=`head /var/mail/root 2>/dev/null`
-if [ "$readmailroot" ]; then
-  echo -e "\e[00;33m[+] We can read /var/mail/root! (snippet below)\e[00m\n$readmailroot" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$readmailroot" ]; then
-  mkdir $format/mail-from-root/ 2>/dev/null
-  cp $readmailroot $format/mail-from-root/ 2>/dev/null
 fi
 
 #mobile/embedded storage locations
@@ -1546,10 +1520,16 @@ then
 fi
 
 if [ "$androidver" ]; then
-    #check system partition mount flags
-    systemmount=`mount | grep " /system " 2>/dev/null`
-    if [ "$systemmount" ] && [ ! "$(echo $systemmount | grep 'ro')" ]; then
-        echo -e "\e[00;33m[+] System partition is writable!\e[00m"
+    storageinfo=`dumpsys mount 2>/dev/null`
+    if [ "$storageinfo" ]; then
+        echo -e "\e[00;31m[-] Storage mounts:\e[00m\n$storageinfo"
+        echo -e "\n"
+    fi
+
+    encryptinfo=`getprop ro.crypto.state 2>/dev/null`
+    if [ "$encryptinfo" ]; then
+        echo -e "\e[00;31m[-] Device encryption status:\e[00m\n$encryptinfo"
+        echo -e "\n"
     fi
     
     #check for writable app directories
@@ -1604,6 +1584,15 @@ if [ "$androidver" ]; then
         fi
     fi
 fi
+
+#looks for files we can write to that don't belong to us
+if [ "$thorough" = "1" ]; then
+  grfilesall=`find /data/data /system -writable ! -user \`whoami\` -type f -exec ls -al {} \; 2>/dev/null`
+  if [ "$grfilesall" ]; then
+    echo -e "\e[00;31m[-] Files not owned by user but writable:\e[00m\n$grfilesall" 
+    echo -e "\n"
+  fi
+fi
 }
 
 docker_checks()
@@ -1645,24 +1634,6 @@ if [ "$dockeryml" ]; then
 fi
 }
 
-lxc_container_checks()
-{
-
-#specific checks - are we in an lxd/lxc container
-lxccontainer=`grep -qa container=lxc /proc/1/environ 2>/dev/null`
-if [ "$lxccontainer" ]; then
-  echo -e "\e[00;33m[+] Looks like we're in a lxc container:\e[00m\n$lxccontainer"
-  echo -e "\n"
-fi
-
-#specific checks - are we a member of the lxd group
-lxdgroup=`id | grep -i lxd 2>/dev/null`
-if [ "$lxdgroup" ]; then
-  echo -e "\e[00;33m[+] We're a member of the (lxd) group - could possibly misuse these rights!\e[00m\n$lxdgroup"
-  echo -e "\n"
-fi
-}
-
 footer()
 {
 echo -e "\e[00;33m### SCAN COMPLETE ####################################\e[00m" 
@@ -1680,8 +1651,7 @@ call_each()
   services_info
   software_configs
   interesting_files
-  docker_checks
-  lxc_container_checks
+  #docker_checks
   footer
 }
 

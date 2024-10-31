@@ -791,11 +791,17 @@ if [ "$xinetdbinperms" ]; then
 fi
 
 # Running services
-services=`dumpsys activity services 2>/dev/null`
+services=`dumpsys activity services | grep -A 2 "ServiceRecord{" | grep -E "ServiceRecord{|intent=|packageName=" | grep -v "android.hardware.location" 2>/dev/null`
 if [ "$services" ]; then
-    echo -e "${RED}[-] Running services:${RESET}\n$services"
+    echo -e "${RED}[-] Active services:${RESET}\n$services"
     echo -e "\n"
 fi
+susservices=` dumpsys activity services | grep -B 2 -A 2 "permission=" | grep -v "READ_PHONE_STATE" 2>/dev/null`
+if [ "$susservices" ]; then
+    echo -e "${RED}[-] Suspicious services:${RESET}\n$susservices"
+    echo -e "\n"
+fi
+    
 
 broadcasts=`dumpsys activity broadcasts | grep -A 3 "Registered Receivers" 2>/dev/null`
 if [ "$broadcasts" ]; then
@@ -855,6 +861,23 @@ if [ "$androidver" ]; then
         echo -e "${RED}[-] Apps with signature permissions:${RESET}\n$signatureperms"
         echo -e "\n"
     fi
+fi
+#check app permissions
+if [ "$thorough" = "1" ]; then
+    local app="$1"
+    if [ -z "$app" ]; then
+        return
+    fi
+    
+    echo -e "\n${RED}[-] Permissions for $app:${RESET}"
+    dumpsys package $app | grep -A 5 "granted=true" 2>/dev/null | \
+        grep -E "permission\.|granted=true" | \
+        grep -v "android.permission.READ_PHONE_STATE"
+
+else
+    # Quick permission check
+    echo -e "${RED}[-] Dangerous permissions:${RESET}"
+    dumpsys package | grep -B 1 "permission.*dangerous" 2>/dev/null
 fi
 }
 

@@ -8,3 +8,4 @@ Following People have contributed to various features (list in no particular ord
 * https://github.com/d78ui98 : code optimization
 * https://github.com/djhohnstein : added checks for private keys, AWS keys and git credential files
 * @3therk1ll : added checks for .bak files
+* @tmart234 : everything Android

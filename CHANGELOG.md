@@ -2,6 +2,9 @@
 
 Note: Export functionality is currently in the experimental stage.
 
+## V0.99 (release 09-07-2019)
+* Improvements to Android output by @tmart234
+
 ## V0.982 (release 07-01-2020)
 * Improvements to script execution speed by @Jrhenderson11 (https://github.com/rebootuser/LinEnum/pull/45 & https://github.com/rebootuser/LinEnum/commit/13741ce79fd5627da64bcf6a04fea11829e91ec8)
 

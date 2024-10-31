@@ -1,9 +1,11 @@
 #!/bin/bash
 #A script to enumerate local information from a Linux host
-version="version 0.982"
+version="version 0.99"
 #@rebootuser
-#tr -d '\r' < LinEnum.sh > LinEnum_fixed.sh
-#chmod 755 LinEnum_fixed.sh
+# you may have to format this file to run on Android device:
+# tr -d '\r' < LinEnum.sh > LinEnum_fixed.sh
+# chmod 755 LinEnum_fixed.sh
+# sh LinEnum_fixed.sh
 
 #help function
 usage () 
@@ -124,7 +126,7 @@ system_info()
 echo -e "\e[00;33m### SYSTEM ##############################################\e[00m" 
 
 #basic kernel info
-unameinfo=`uname -a 2>/dev/null`
+unameinfo=`uname -r 2>/dev/null`
 if [ "$unameinfo" ]; then
   echo -e "\e[00;31m[-] Kernel information:\e[00m\n$unameinfo" 
   echo -e "\n" 

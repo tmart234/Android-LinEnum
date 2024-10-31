@@ -2,6 +2,8 @@
 #A script to enumerate local information from a Linux host
 version="version 0.982"
 #@rebootuser
+#tr -d '\r' < LinEnum.sh > LinEnum_fixed.sh
+#chmod 755 LinEnum_fixed.sh
 
 #help function
 usage () 
@@ -80,27 +82,37 @@ echo -e "\e[00m\n"
 #Android debug checks if Android detected
 androidver=`getprop ro.build.version.release 2>/dev/null`
 if [ "$androidver" ]; then
-    echo -e "\e[00;33m[+] Android debug info:\e[00m"
-    
-    #check if debuggable 
-    debuggable=`getprop ro.debuggable 2>/dev/null`
-    if [ "$debuggable" = "1" ]; then
-        echo -e "\e[00;33m[+] Device is debuggable!\e[00m"
-    fi
+   echo -e "\e[00;33m[+] Android debug info:\e[00m"
+   
+   #check debug status multiple ways
+   debuggable=`getprop ro.debuggable 2>/dev/null`
+   userdebug=`getprop ro.build.type 2>/dev/null`
+   debugsecure=`getprop ro.adb.secure 2>/dev/null`
+   
+   echo -e "Debug Status:"
+   echo -e "- ro.debuggable: $debuggable"
+   echo -e "- ro.build.type: $userdebug"
+   echo -e "- ro.adb.secure: $debugsecure"
 
-    #check adb status
-    adbstatus=`getprop init.svc.adbd 2>/dev/null`
-    if [ "$adbstatus" = "running" ]; then
-        echo -e "\e[00;33m[+] ADB daemon is running!\e[00m"
-    fi
+   #check adb status multiple ways
+   adbstatus=`getprop init.svc.adbd 2>/dev/null`
+   adbsecure=`getprop ro.adb.secure 2>/dev/null`
+   adbtcp=`getprop service.adb.tcp.port 2>/dev/null`
+   adbusb=`getprop persist.sys.usb.config 2>/dev/null`
+   
+   echo -e "\nADB Status:"
+   echo -e "- init.svc.adbd: $adbstatus"
+   echo -e "- ro.adb.secure: $adbsecure"
+   echo -e "- adb.tcp.port: $adbtcp"
+   echo -e "- usb config: $adbusb"
 
-    #check debug properties
-    debugprops=`getprop | grep -E "debug\." 2>/dev/null`
-    if [ "$debugprops" ]; then
-        echo -e "\e[00;31m[-] Debug properties set:\e[00m\n$debugprops"
-    fi
+   #check debug properties with broader search
+   debugprops=`getprop | grep -iE "debug|adb|usb" 2>/dev/null`
+   if [ "$debugprops" ]; then
+       echo -e "\n\e[00;31m[-] Debug-related properties:\e[00m\n$debugprops"
+   fi
 
-    echo -e "\n"
+   echo -e "\n"
 fi
 }
 
@@ -157,9 +169,19 @@ if [ "$androidver" ]; then
         echo -e "Security Patch Level: $patchlevel"
     fi
 
-    #check if running on Android TV and handle TV-specific checks
+    #check if running on Android TV using multiple detection methods
     tvinfo=`getprop ro.product.characteristics 2>/dev/null`
-    if [ "$tvinfo" = "tv" ]; then
+    tvuimode=`getprop ro.build.characteristics 2>/dev/null`
+    tvpackage=`pm list packages com.google.android.tvlauncher 2>/dev/null`
+    tvsettings=`pm list packages com.android.tv.settings 2>/dev/null`
+
+    echo -e "\nAndroid TV Detection Results:"
+    echo -e "- ro.product.characteristics: $tvinfo"
+    echo -e "- ro.build.characteristics: $tvuimode"
+    echo -e "- TV Launcher Package: $tvpackage"
+    echo -e "- TV Settings Package: $tvsettings"
+
+    if [ "$tvinfo" = "tv" ] || [ "$tvuimode" = "tv" ] || [ "$tvpackage" ] || [ "$tvsettings" ]; then
         echo -e "\e[00;31m[-] Android TV detected - checking for vulnerabilities\e[00m"
         
         #check system update policy and other security settings

@@ -160,24 +160,11 @@ if [ "$verityinfo" ]; then
     echo -e "\n"
 fi
 
-bootloaderinfo=`getprop ro.boot.flash.locked 2>/dev/null`
-if [ "$bootloaderinfo" ]; then
-    echo -e "${RED}[-] Bootloader lock status:${RESET}\n$bootloaderinfo"
-    echo -e "\n"
-fi
-
 #target hostname info
 hostnamed=`hostname 2>/dev/null`
 if [ "$hostnamed" ]; then
   echo -e "${RED}[-] Hostname:${RESET}\n$hostnamed" 
   echo -e "\n" 
-fi
-
-#embedded bootloader info
-bootinfo=`find /proc /sys /dev -name "boot*" -type f -exec ls -la {} \; 2>/dev/null`
-if [ "$bootinfo" ]; then
-    echo -e "${RED}[-] Boot-related files:${RESET}\n$bootinfo"
-    echo -e "\n"
 fi
 
 #android/embedded system checks 
@@ -298,6 +285,63 @@ if [ "$androidver" ]; then
     if [ "$secprops" ]; then
         echo -e "${RED}[-] Security-relevant Android properties:${RESET}\n$secprops"
     fi
+fi
+
+# Kernel Memory layout
+kernelbase=`grep -i "Kernel" /proc/iomem 2>/dev/null`
+if [ "$kernelbase" ]; then
+    echo -e "${RED}[-] Kernel memory layout:${RESET}\n$kernelbase" 
+    echo -e "\n" 
+fi
+
+# Check Vendor specific properties 
+amlprops=`getprop | grep -i "amlogic" 2>/dev/null`
+if [ "$amlprops" ]; then
+    echo -e "${RED}[-] Amlogic properties:${RESET}\n$amlprops"
+    echo -e "\n"
+fi
+}
+
+bootloader_info()
+{
+bootloaderinfo=`getprop ro.boot.flash.locked 2>/dev/null`
+if [ "$bootloaderinfo" ]; then
+    echo -e "${RED}[-] Bootloader lock status:${RESET}\n$bootloaderinfo"
+    echo -e "\n"
+fi
+#embedded bootloader info
+bootinfo=`find /proc /sys /dev -name "boot*" -type f -exec ls -la {} \; 2>/dev/null`
+if [ "$bootinfo" ]; then
+    echo -e "${RED}[-] Boot-related files:${RESET}\n$bootinfo"
+    echo -e "\n"
+fi
+
+# Partition layout
+mmcpart=`ls -l /dev/block/platform/*/* | grep -E "system|vendor|boot" 2>/dev/null`
+if [ "$mmcpart" ]; then
+    echo -e "${RED}[-] MMC partition layout:${RESET}\n$mmcpart"
+    echo -e "\n"
+fi
+
+# Add DTB encryption status check
+dtbcheck=`dmesg | grep -i "dtb" 2>/dev/null`
+if [ "$dtbcheck" ]; then
+    echo -e "${RED}[-] DTB status:${RESET}\n$dtbcheck"
+    echo -e "\n"
+fi
+
+# Add bootloader status 
+bootlocks=`getprop ro.boot.flash.locked 2>/dev/null; getprop ro.boot.verifiedbootstate 2>/dev/null; getprop ro.boot.secureboot 2>/dev/null; getprop ro.boot.veritymode 2>/dev/null`
+if [ "$bootlocks" ]; then
+    echo -e "${RED}[-] Boot/Secure boot status:${RESET}\n$bootlocks"
+    echo -e "\n"
+fi
+
+# Add RPMB state
+rpmbstate=`getprop ro.boot.rpmb_state 2>/dev/null`
+if [ "$rpmbstate" ]; then
+    echo -e "${RED}[-] RPMB state:${RESET}\n$rpmbstate"
+    echo -e "\n"
 fi
 }
 
@@ -1509,6 +1553,12 @@ if [ "$thorough" = "1" ]; then
     echo -e "${RED}[-] Files not owned by user but writable:${RESET}\n$grfilesall" 
     echo -e "\n"
   fi
+fi
+
+keystores=`find /data -name "*.key" -o -name "*.keystore" 2>/dev/null`
+if [ "$keystores" ]; then
+    echo -e "${RED}[-] Key storage files:${RESET}\n$keystores"
+    echo -e "\n"
 fi
 }
 

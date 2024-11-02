@@ -1,0 +1,61 @@
+#!/bin/sh
+# uboot enum script
+# Save as enumerate.scr
+
+echo "### U-BOOT ENUMERATION ###"
+
+# Get and parse help
+help_output=`help`
+echo "\nAvailable Commands:"
+echo "${help_output}"
+
+# Check for and run storage commands
+echo "\nStorage Commands:"
+if echo "${help_output}" | grep -q "mmc"; then
+    echo "MMC Info:"
+    mmc info
+    mmc list
+    mmc part
+fi
+
+if echo "${help_output}" | grep -q "amlmmc"; then
+    echo "Amlogic MMC Info:"
+    amlmmc list
+    amlmmc part 1
+fi
+
+if echo "${help_output}" | grep -q "store"; then
+    echo "Store Info:"
+    store list
+    store partition
+fi
+
+# Check for system/device info commands
+echo "\nSystem Info:"
+if echo "${help_output}" | grep -q "version"; then
+    version
+fi
+
+if echo "${help_output}" | grep -q "printenv"; then
+    printenv
+fi
+
+# Check for hardware commands
+echo "\nHardware Info:"
+if echo "${help_output}" | grep -q "gpio"; then
+    gpio status
+fi
+
+if echo "${help_output}" | grep -q "usb"; then
+    usb info
+fi
+
+# Check for memory/debug commands
+echo "\nMemory Info:"
+if echo "${help_output}" | grep -q "md.b"; then
+    md.b 1000000 100
+fi
+
+if echo "${help_output}" | grep -q "bdinfo"; then
+    bdinfo
+fi

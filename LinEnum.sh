@@ -139,6 +139,18 @@ if [ "$procver" ]; then
   echo -e "\n" 
 fi
 
+cpuinfo=`cat /proc/cpuinfo 2>/dev/null`
+if [ "$cpuinfo" ]; then
+  echo -e "${YELLOW}[-] CPU information:${RESET}\n$cpuinfo" 
+  echo -e "\n" 
+fi
+
+meminfo=`cat /proc/meminfo 2>/dev/null`
+if [ "$meminfo" ]; then
+  echo -e "${YELLOW}[-] Memory information:${RESET}\n$meminfo" 
+  echo -e "\n" 
+fi
+
 # Android build info:
 buildinfo=`getprop ro.build.fingerprint 2>/dev/null`
 if [ "$buildinfo" ]; then
@@ -287,17 +299,24 @@ if [ "$androidver" ]; then
     fi
 fi
 
+# System props
+sysprops=`getprop | grep -E "ro.product|ro.hardware|ro.arch" 2>/dev/null`
+if [ "$sysprops" ]; then
+    echo -e "${YELLOW}[-] System Properties (product, hardware, & arch):${RESET}\n$sysprops" 
+    echo -e "\n" 
+fi
+
 # Kernel Memory layout
 kernelbase=`grep -i "Kernel" /proc/iomem 2>/dev/null`
 if [ "$kernelbase" ]; then
-    echo -e "${RED}[-] Kernel memory layout:${RESET}\n$kernelbase" 
+    echo -e "${YELLOW}[-] Kernel memory layout:${RESET}\n$kernelbase" 
     echo -e "\n" 
 fi
 
 # Check Vendor specific properties 
 amlprops=`getprop | grep -i "amlogic" 2>/dev/null`
 if [ "$amlprops" ]; then
-    echo -e "${RED}[-] Amlogic properties:${RESET}\n$amlprops"
+    echo -e "${YELLOW}[-] Amlogic properties:${RESET}\n$amlprops"
     echo -e "\n"
 fi
 }
@@ -312,14 +331,14 @@ fi
 #embedded bootloader info
 bootinfo=`find /proc /sys /dev -name "boot*" -type f -exec ls -la {} \; 2>/dev/null`
 if [ "$bootinfo" ]; then
-    echo -e "${RED}[-] Boot-related files:${RESET}\n$bootinfo"
+    echo -e "${YELLOW}[-] Boot-related files:${RESET}\n$bootinfo"
     echo -e "\n"
 fi
 
 # Partition layout
 mmcpart=`ls -l /dev/block/platform/*/* | grep -E "system|vendor|boot" 2>/dev/null`
 if [ "$mmcpart" ]; then
-    echo -e "${RED}[-] MMC partition layout:${RESET}\n$mmcpart"
+    echo -e "${YELLOW}[-] MMC partition layout:${RESET}\n$mmcpart"
     echo -e "\n"
 fi
 
@@ -340,7 +359,7 @@ fi
 # Add RPMB state
 rpmbstate=`getprop ro.boot.rpmb_state 2>/dev/null`
 if [ "$rpmbstate" ]; then
-    echo -e "${RED}[-] RPMB state:${RESET}\n$rpmbstate"
+    echo -e "${YELLOW}[-] RPMB state:${RESET}\n$rpmbstate"
     echo -e "\n"
 fi
 }

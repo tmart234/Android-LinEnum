@@ -165,13 +165,6 @@ if [ "$boardinfo" ]; then
     echo -e "\n"
 fi
 
-# Android-specific security checks:
-verityinfo=`getprop ro.boot.veritymode 2>/dev/null`
-if [ "$verityinfo" ]; then
-    echo -e "${RED}[-] Verified boot status:${RESET}\n$verityinfo"
-    echo -e "\n"
-fi
-
 #target hostname info
 hostnamed=`hostname 2>/dev/null`
 if [ "$hostnamed" ]; then
@@ -321,8 +314,27 @@ if [ "$amlprops" ]; then
 fi
 }
 
+# includes some partition things
 bootloader_info()
 {
+verityinfo=`getprop ro.boot.veritymode 2>/dev/null`
+if [ "$verityinfo" ]; then
+    echo -e "${RED}[-] Verified boot status:${RESET}\n$verityinfo"
+    echo -e "\n"
+fi
+
+boottype=`getprop getprop ro.bootloader 2>/dev/null; getprop getprop ro.boot.bootloader 2>/dev/null;`
+if [ "$boottype" ]; then
+    echo -e "${YELLOW}[-] Bootloader name and version:${RESET}\n$boottype"
+    echo -e "\n"
+fi
+
+bootargs=`cat /proc/cmdline 2>/dev/null`
+if [ "$bootargs" ]; then
+    echo -e "${YELLOW}[-] Bootloader args:${RESET}\n$bootargs"
+    echo -e "\n"
+fi
+
 bootloaderinfo=`getprop ro.boot.flash.locked 2>/dev/null`
 if [ "$bootloaderinfo" ]; then
     echo -e "${RED}[-] Bootloader lock status:${RESET}\n$bootloaderinfo"
@@ -350,7 +362,7 @@ if [ "$dtbcheck" ]; then
 fi
 
 # Add bootloader status 
-bootlocks=`getprop ro.boot.flash.locked 2>/dev/null; getprop ro.boot.verifiedbootstate 2>/dev/null; getprop ro.boot.secureboot 2>/dev/null; getprop ro.boot.veritymode 2>/dev/null`
+bootlocks=`getprop ro.boot.verifiedbootstate 2>/dev/null; getprop ro.boot.secureboot 2>/dev/null; getprop ro.boot.veritymode 2>/dev/null`
 if [ "$bootlocks" ]; then
     echo -e "${RED}[-] Boot/Secure boot status:${RESET}\n$bootlocks"
     echo -e "\n"

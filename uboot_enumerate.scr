@@ -1,61 +1,51 @@
-#!/bin/sh
-# uboot enum script
-# Save as enumerate.scr
+# compile script:
+# mkimage -A arm64 -O linux -T script -C none -a 0 -e 0 -n "Test Script" -d boot.cmd boot.scr
+# First disable security features that might interfere
+setenv verify n
+setenv secured_boot 0
+setenv bootdelay 3
+setenv EnableSelinux permissive
 
-echo "### U-BOOT ENUMERATION ###"
+# Enable debugging and testing
+setenv bootverbose 1
+setenv bootdebug 1
+setenv debug_level 3
+setenv diagnostic_level 3
 
-# Get and parse help
-help_output=`help`
-echo "\nAvailable Commands:"
-echo "${help_output}"
+# Enable console output
+setenv stderr serial
+setenv stdout serial
+setenv stdin serial
 
-# Check for and run storage commands
-echo "\nStorage Commands:"
-if echo "${help_output}" | grep -q "mmc"; then
-    echo "MMC Info:"
-    mmc info
-    mmc list
-    mmc part
-fi
+# Turn off automatic boot
+setenv bootretry -1
+setenv bootdelay -1
+setenv bootcount 0
 
-if echo "${help_output}" | grep -q "amlmmc"; then
-    echo "Amlogic MMC Info:"
-    amlmmc list
-    amlmmc part 1
-fi
+# Save all environment changes
+saveenv
 
-if echo "${help_output}" | grep -q "store"; then
-    echo "Store Info:"
-    store list
-    store partition
-fi
+# Print critical variables to verify setup
+printenv bootverbose
+printenv debug_level
+printenv verify
+printenv secured_boot
+printenv EnableSelinux
 
-# Check for system/device info commands
-echo "\nSystem Info:"
-if echo "${help_output}" | grep -q "version"; then
-    version
-fi
+# Basic device initialization 
+mmc dev 0
+mmc rescan
 
-if echo "${help_output}" | grep -q "printenv"; then
-    printenv
-fi
+# Simple test of MMC availability
+test "mmc dev 0" -eq 0
 
-# Check for hardware commands
-echo "\nHardware Info:"
-if echo "${help_output}" | grep -q "gpio"; then
-    gpio status
-fi
+# Try loading kernel and test success
+fatload mmc 0:1 ${loadaddr} Image
+test $? -eq 0
 
-if echo "${help_output}" | grep -q "usb"; then
-    usb info
-fi
+# If that worked, try DTB
+fatload mmc 0:1 ${fdt_addr_r} dtb
+test $? -eq 0
 
-# Check for memory/debug commands
-echo "\nMemory Info:"
-if echo "${help_output}" | grep -q "md.b"; then
-    md.b 1000000 100
-fi
-
-if echo "${help_output}" | grep -q "bdinfo"; then
-    bdinfo
-fi
+# Boot if tests passed
+test $? -eq 0 && booti ${loadaddr} - ${fdt_addr_r}

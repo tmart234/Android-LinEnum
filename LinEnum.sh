@@ -374,6 +374,24 @@ if [ "$rpmbstate" ]; then
     echo -e "${YELLOW}[-] RPMB state:${RESET}\n$rpmbstate"
     echo -e "\n"
 fi
+
+bootparams=`cat /proc/cmdline 2>/dev/null`
+if [ "$bootparams" ]; then
+    echo -e "${YELLOW}[-] Boot Parameters:${RESET}\n$bootparams"
+    echo -e "\n"
+fi
+
+memaddr=`cat /proc/iomem 2>/dev/null | grep -i "Kernel\|Ramdisk\|Second Stage" 2>/dev/null`
+if [ "$memaddr" ]; then
+    echo -e "${YELLOW}[-] Memory Layout:${RESET}\n$memaddr"
+    echo -e "\n"
+fi
+
+emmcinfo=`ls -l /dev/block/platform/*/* | grep -E "bl33|kernel" 2>/dev/null`
+if [ "$emmcinfo" ]; then
+    echo -e "${YELLOW}[-] eMMC Partition Layout:${RESET}\n$emmcinfo"
+    echo -e "\n"
+fi
 }
 
 user_info()

@@ -1,6 +1,8 @@
 # compile script:
 # mkimage -A arm64 -O linux -T script -C none -a 0 -e 0 -n "Test Script" -d boot.cmd boot.scr
 # First disable security features that might interfere
+# modify this script based on previous enum
+
 setenv verify n
 setenv secured_boot 0
 setenv bootdelay 3
@@ -26,26 +28,51 @@ setenv bootcount 0
 saveenv
 
 # Print critical variables to verify setup
+version
 printenv bootverbose
 printenv debug_level
 printenv verify
 printenv secured_boot
 printenv EnableSelinux
+# Verify current memory settings
+printenv loadaddr
 
 # Basic device initialization 
 mmc dev 0
 mmc rescan
+mmc info
+mmc part
+# vendor commands
+amlmmc list
+amlmmc part 1
+
+# Store command checks
+store list
+store partition
+# Read decrypted DTB from Ramdisk Load Address (0x01000000)
+store dtb read 1000000
+# Display first 0x2000 bytes (one page size worth) from DTB
+md.b 1000000 2000
+
+# Memory/boot checks
+# Read from Kernel offset (0x8c200 from boot log)
+# This is where bl33/kernel is stored in eMMC
+md.b 0x8c200 0x100
+printenv bootcmd
+printenv bootargs
 
 # Simple test of MMC availability
 test "mmc dev 0" -eq 0
 
 # Try loading kernel and test success
+# This is Kernel Base (0x01078000) + BOARD_KERNEL_OFFSET (0x00008000)
 fatload mmc 0:1 ${loadaddr} Image
 test $? -eq 0
 
-# If that worked, try DTB
+# Try loading DTB to Second Stage Load Address (0x00f00000)
+# Since DTB is often stored in second stage
 fatload mmc 0:1 ${fdt_addr_r} dtb
 test $? -eq 0
 
-# Boot if tests passed
+# Boot if tests passed - using proper kernel and DTB addresses
 test $? -eq 0 && booti ${loadaddr} - ${fdt_addr_r}

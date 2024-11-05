@@ -36,6 +36,7 @@ printenv secured_boot
 printenv EnableSelinux
 # Verify current memory settings
 printenv loadaddr
+usb status
 
 # Basic device initialization 
 mmc dev 0

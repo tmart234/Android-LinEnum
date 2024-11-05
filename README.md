@@ -2,8 +2,6 @@ This is a forked version that supports Android
 
 
 # LinEnum
-For more information visit www.rebootuser.com
-
 Note: Export functionality is currently in the experimental stage.
 
 General usage:

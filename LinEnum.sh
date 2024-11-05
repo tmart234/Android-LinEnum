@@ -117,6 +117,14 @@ if [ "$androidver" ]; then
 
    echo -e "\n"
 fi
+
+# Check for vendor debug features
+echo -e "${RED}[-] Vendor debug features:${RESET}"
+vendordebug=`getprop | grep -iE "debug|eng|test|vendor.debug" 2>/dev/null`
+if [ "$vendordebug" ]; then
+    echo -e "$vendordebug"
+    echo -e "\n"
+fi
 }
 
 # useful binaries (thanks to https://gtfobins.github.io/)
@@ -133,10 +141,24 @@ if [ "$unameinfo" ]; then
   echo -e "\n" 
 fi
 
-procver=`cat /proc/version 2>/dev/null`
-if [ "$procver" ]; then
-  echo -e "${RED}[-] Kernel information (continued):${RESET}\n$procver" 
-  echo -e "\n" 
+# Kernel version and build info
+kernelver=`cat /proc/version 2>/dev/null`
+if [ "$kernelver" ]; then
+    echo -e "Kernel version:\n$kernelver"
+    
+    # Extract and highlight vendor build info
+    vendorbuild=`echo "$kernelver" | grep -o "(.*)"`
+    if [ "$vendorbuild" ]; then
+        echo -e "${YELLOW}[+] Custom vendor build detected:${RESET} $vendorbuild"
+    fi
+    echo -e "\n"
+fi
+
+# Check kernel config
+if [ -f "/proc/config.gz" ]; then
+    echo -e "${RED}[-] Kernel config available - checking for vendor options:${RESET}"
+    zcat /proc/config.gz 2>/dev/null | grep -iE "VENDOR|CUSTOM|OEM|AMLOGIC|MEDIATEK|QCOM|ROCKCHIP|REALTEK"
+    echo -e "\n"
 fi
 
 cpuinfo=`cat /proc/cpuinfo 2>/dev/null`
@@ -155,6 +177,22 @@ fi
 buildinfo=`getprop ro.build.fingerprint 2>/dev/null`
 if [ "$buildinfo" ]; then
     echo -e "${RED}[-] Build fingerprint:${RESET}\n$buildinfo"
+    echo -e "\n"
+fi
+
+# Check vendor kernel modules
+echo -e "${YELLOW}[-] Vendor kernel modules:${RESET}"
+vendormods=`ls -lR /vendor/lib/modules 2>/dev/null`
+if [ "$vendormods" ]; then
+    echo -e "$vendormods"
+    echo -e "\n"
+fi
+
+# Check for vendor init scripts
+echo -e "${YELLOW}[-] Vendor init scripts:${RESET}"
+vendorinit=`ls -l /vendor/etc/init 2>/dev/null; ls -l /vendor/etc/init.d 2>/dev/null`
+if [ "$vendorinit" ]; then
+    echo -e "$vendorinit"
     echo -e "\n"
 fi
 
@@ -307,7 +345,7 @@ if [ "$kernelbase" ]; then
 fi
 
 # Check Vendor specific properties 
-amlprops=`getprop | grep -i "amlogic" 2>/dev/null`
+amlprops=`getprop | grep -iE "vendor|amlogic|oem|custom|build.display|build.version.custom|build.signature" 2>/dev/null`
 if [ "$amlprops" ]; then
     echo -e "${YELLOW}[-] Amlogic properties:${RESET}\n$amlprops"
     echo -e "\n"
@@ -351,6 +389,13 @@ fi
 mmcpart=`ls -l /dev/block/platform/*/* | grep -E "system|vendor|boot" 2>/dev/null`
 if [ "$mmcpart" ]; then
     echo -e "${YELLOW}[-] MMC partition layout:${RESET}\n$mmcpart"
+    echo -e "\n"
+fi
+
+#partition sizes
+partsizes=`cat /proc/partitions 2>/dev/null`
+if [ "$partsizes" ]; then
+    echo -e "${YELLOW}[-] Partition sizes:${RESET}\n$partsizes"
     echo -e "\n"
 fi
 

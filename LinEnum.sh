@@ -190,7 +190,7 @@ fi
 
 # Check for vendor init scripts
 echo -e "${YELLOW}[-] Vendor init scripts:${RESET}"
-vendorinit=`ls -l /vendor/etc/init 2>/dev/null; ls -l /vendor/etc/init.d 2>/dev/null`
+vendorinit=`ls -l /vendor/etc/init 2>/dev/null`
 if [ "$vendorinit" ]; then
     echo -e "$vendorinit"
     echo -e "\n"
@@ -450,75 +450,6 @@ if [ "$psinfo" ]; then
   echo -e "\n"
 fi
 
-#lists all id's and respective group(s)
-grpinfo=`for i in $(cut -d":" -f1 /etc/passwd 2>/dev/null);do id $i;done 2>/dev/null`
-if [ "$grpinfo" ]; then
-  echo -e "${RED}[-] Group memberships:${RESET}\n$grpinfo"
-  echo -e "\n"
-fi
-
-#added by phackt - look for adm group (thanks patrick)
-adm_users=$(echo -e "$grpinfo" | grep "(adm)")
-if [[ ! -z $adm_users ]];
-  then
-    echo -e "${RED}[-] It looks like we have some admin users:${RESET}\n$adm_users"
-    echo -e "\n"
-fi
-
-#checks to see if any hashes are stored in /etc/passwd (depreciated  *nix storage method)
-hashesinpasswd=`grep -v '^[^:]*:[x]' /etc/passwd 2>/dev/null`
-if [ "$hashesinpasswd" ]; then
-  echo -e "${YELLOW}[+] It looks like we have password hashes in /etc/passwd!${RESET}\n$hashesinpasswd" 
-  echo -e "\n"
-fi
-
-#contents of /etc/passwd
-readpasswd=`cat /etc/passwd 2>/dev/null`
-if [ "$readpasswd" ]; then
-  echo -e "${RED}[-] Contents of /etc/passwd:${RESET}\n$readpasswd" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$readpasswd" ]; then
-  mkdir $format/etc-export/ 2>/dev/null
-  cp /etc/passwd $format/etc-export/passwd 2>/dev/null
-fi
-
-#checks to see if the shadow file can be read
-readshadow=`cat /etc/shadow 2>/dev/null`
-if [ "$readshadow" ]; then
-  echo -e "${YELLOW}[+] We can read the shadow file!${RESET}\n$readshadow" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$readshadow" ]; then
-  mkdir $format/etc-export/ 2>/dev/null
-  cp /etc/shadow $format/etc-export/shadow 2>/dev/null
-fi
-
-#checks to see if /etc/master.passwd can be read - BSD 'shadow' variant
-readmasterpasswd=`cat /etc/master.passwd 2>/dev/null`
-if [ "$readmasterpasswd" ]; then
-  echo -e "${YELLOW}[+] We can read the master.passwd file!${RESET}\n$readmasterpasswd" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$readmasterpasswd" ]; then
-  mkdir $format/etc-export/ 2>/dev/null
-  cp /etc/master.passwd $format/etc-export/master.passwd 2>/dev/null
-fi
-
-#all root accounts (uid 0)
-superman=`grep -v -E "^#" /etc/passwd 2>/dev/null| awk -F: '$3 == 0 { print $1}' 2>/dev/null`
-if [ "$superman" ]; then
-  echo -e "${RED}[-] Super user account(s):${RESET}\n$superman"
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$sudoers" ]; then
-  mkdir $format/etc-export/ 2>/dev/null
-  cp /etc/sudoers $format/etc-export/sudoers 2>/dev/null
-fi
 
 #checks to see if roots home directory is accessible
 rthmdir=`ls -ahl /root/ 2>/dev/null`
@@ -664,25 +595,6 @@ if [ "$umaskvalue" ]; then
   echo -e "${RED}[-] Current umask value:${RESET}\n$umaskvalue" 
   echo -e "\n"
 fi
-
-#umask value as in /etc/login.defs
-umaskdef=`grep -i "^UMASK" /etc/login.defs 2>/dev/null`
-if [ "$umaskdef" ]; then
-  echo -e "${RED}[-] umask value as specified in /etc/login.defs:${RESET}\n$umaskdef" 
-  echo -e "\n"
-fi
-
-#password policy information as stored in /etc/login.defs
-logindefs=`grep "^PASS_MAX_DAYS\|^PASS_MIN_DAYS\|^PASS_WARN_AGE\|^ENCRYPT_METHOD" /etc/login.defs 2>/dev/null`
-if [ "$logindefs" ]; then
-  echo -e "${RED}[-] Password and storage information:${RESET}\n$logindefs" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$logindefs" ]; then
-  mkdir $format/etc-export/ 2>/dev/null
-  cp /etc/login.defs $format/etc-export/login.defs 2>/dev/null
-fi
 }
 
 job_info()
@@ -719,29 +631,6 @@ if [ "$anacrontab" ]; then
   echo -e "${RED}[-] When were jobs last executed (/var/spool/anacron contents):${RESET}\n$anacrontab" 
   echo -e "\n"
 fi
-
-#pull out account names from /etc/passwd and see if any users have associated cronjobs (priv command)
-cronother=`cut -d ":" -f 1 /etc/passwd | xargs -n1 crontab -l -u 2>/dev/null`
-if [ "$cronother" ]; then
-  echo -e "${RED}[-] Jobs held by all users:${RESET}\n$cronother" 
-  echo -e "\n"
-fi
-
-# list systemd timers
-if [ "$thorough" = "1" ]; then
-  # include inactive timers in thorough mode
-  systemdtimers="$(systemctl list-timers --all 2>/dev/null)"
-  info=""
-else
-  systemdtimers="$(systemctl list-timers 2>/dev/null |head -n -1 2>/dev/null)"
-  # replace the info in the output with a hint towards thorough mode
-  info="\e[2mEnable thorough tests to see inactive timers${RESET}"
-fi
-if [ "$systemdtimers" ]; then
-  echo -e "${RED}[-] Systemd timers:${RESET}\n$systemdtimers\n$info"
-  echo -e "\n"
-fi
-
 }
 
 networking_info()
@@ -907,27 +796,6 @@ procpermbase=`ps aux 2>/dev/null | awk '{print $11}' | xargs -r ls 2>/dev/null |
   for i in $procpermbase; do cp --parents $i $format/ps-export/; done 2>/dev/null
 fi
 
-
-#very 'rough' command to extract associated binaries from inetd.conf & show permisisons of each
-inetdbinperms=`awk '{print $7}' /etc/inetd.conf 2>/dev/null |xargs -r ls -la 2>/dev/null`
-if [ "$inetdbinperms" ]; then
-  echo -e "${RED}[-] The related inetd binary permissions:${RESET}\n$inetdbinperms" 
-  echo -e "\n"
-fi
-
-xinetdincd=`grep "/etc/xinetd.d" /etc/xinetd.conf 2>/dev/null`
-if [ "$xinetdincd" ]; then
-  echo -e "${RED}[-] /etc/xinetd.d is included in /etc/xinetd.conf - associated binary permissions are listed below:${RESET}"; ls -la /etc/xinetd.d 2>/dev/null 
-  echo -e "\n"
-fi
-
-#very 'rough' command to extract associated binaries from xinetd.conf & show permisisons of each
-xinetdbinperms=`awk '{print $7}' /etc/xinetd.conf 2>/dev/null |xargs -r ls -la 2>/dev/null`
-if [ "$xinetdbinperms" ]; then
-  echo -e "${RED}[-] The related xinetd binary permissions:${RESET}\n$xinetdbinperms" 
-  echo -e "\n"
-fi
-
 # Running services
 services=`dumpsys activity services | grep -A 2 "ServiceRecord{" | grep -E "ServiceRecord{|intent=|packageName=" | grep -v "android.hardware.location" 2>/dev/null`
 if [ "$services" ]; then
@@ -973,13 +841,6 @@ if [ "$initperms" ]; then
    echo -e "\n"
 fi
 
-# systemd files not belonging to root
-systemdperms=`find /lib/systemd/ \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
-if [ "$systemdperms" ]; then
-   echo -e "${YELLOW}[+] /lib/systemd/* config files not belonging to root:${RESET}\n$systemdperms"
-   echo -e "\n"
-fi
-
 #check running packages
 packagesinfo=`pm list packages 2>/dev/null`
 if [ "$packagesinfo" ]; then
@@ -1022,60 +883,6 @@ fi
 software_configs()
 {
 echo -e "${YELLOW}### SOFTWARE #############################################${RESET}" 
-
-#mysql details - if installed
-mysqlver=`mysql --version 2>/dev/null`
-if [ "$mysqlver" ]; then
-  echo -e "${RED}[-] MYSQL version:${RESET}\n$mysqlver" 
-  echo -e "\n"
-fi
-
-#checks to see if root/root will get us a connection
-mysqlconnect=`mysqladmin -uroot -proot version 2>/dev/null`
-if [ "$mysqlconnect" ]; then
-  echo -e "${YELLOW}[+] We can connect to the local MYSQL service with default root/root credentials!${RESET}\n$mysqlconnect" 
-  echo -e "\n"
-fi
-
-#mysql version details
-mysqlconnectnopass=`mysqladmin -uroot version 2>/dev/null`
-if [ "$mysqlconnectnopass" ]; then
-  echo -e "${YELLOW}[+] We can connect to the local MYSQL service as 'root' and without a password!${RESET}\n$mysqlconnectnopass" 
-  echo -e "\n"
-fi
-
-#postgres details - if installed
-postgver=`psql -V 2>/dev/null`
-if [ "$postgver" ]; then
-  echo -e "${RED}[-] Postgres version:${RESET}\n$postgver" 
-  echo -e "\n"
-fi
-
-#checks to see if any postgres password exists and connects to DB 'template0' - following commands are a variant on this
-postcon1=`psql -U postgres -w template0 -c 'select version()' 2>/dev/null | grep version`
-if [ "$postcon1" ]; then
-  echo -e "${YELLOW}[+] We can connect to Postgres DB 'template0' as user 'postgres' with no password!:${RESET}\n$postcon1" 
-  echo -e "\n"
-fi
-
-postcon11=`psql -U postgres -w template1 -c 'select version()' 2>/dev/null | grep version`
-if [ "$postcon11" ]; then
-  echo -e "${YELLOW}[+] We can connect to Postgres DB 'template1' as user 'postgres' with no password!:${RESET}\n$postcon11" 
-  echo -e "\n"
-fi
-
-postcon2=`psql -U pgsql -w template0 -c 'select version()' 2>/dev/null | grep version`
-if [ "$postcon2" ]; then
-  echo -e "${YELLOW}[+] We can connect to Postgres DB 'template0' as user 'psql' with no password!:${RESET}\n$postcon2" 
-  echo -e "\n"
-fi
-
-postcon22=`psql -U pgsql -w template1 -c 'select version()' 2>/dev/null | grep version`
-if [ "$postcon22" ]; then
-  echo -e "${YELLOW}[+] We can connect to Postgres DB 'template1' as user 'psql' with no password!:${RESET}\n$postcon22" 
-  echo -e "\n"
-fi
-
 #apache details - if installed
 apachever=`apache2 -v 2>/dev/null; httpd -v 2>/dev/null`
 if [ "$apachever" ]; then
@@ -1100,13 +907,6 @@ apachemodules=`apache2ctl -M 2>/dev/null; httpd -M 2>/dev/null`
 if [ "$apachemodules" ]; then
   echo -e "${RED}[-] Installed Apache modules:${RESET}\n$apachemodules" 
   echo -e "\n"
-fi
-
-#htpasswd check
-htpasswd=`find / -name .htpasswd -print -exec cat {} \; 2>/dev/null`
-if [ "$htpasswd" ]; then
-    echo -e "${YELLOW}[-] htpasswd found - could contain passwords:${RESET}\n$htpasswd"
-    echo -e "\n"
 fi
 
 #anything in the default http home dirs (a thorough only check as output can be large)
@@ -1143,7 +943,7 @@ if [ "$compiler" ]; then
 fi
 
 #manual check - lists out sensitive files, can we read/modify etc.
-echo -e "${RED}[-] Can we read/write sensitive files:${RESET}" ; ls -la /etc/passwd 2>/dev/null ; ls -la /etc/group 2>/dev/null ; ls -la /etc/profile 2>/dev/null; ls -la /etc/shadow 2>/dev/null ; ls -la /etc/master.passwd 2>/dev/null 
+echo -e "${RED}[-] Can we read/write sensitive files:${RESET}" ; ls -la /etc/passwd 2>/dev/null ; ls -la /etc/group 2>/dev/null ; ls -la /etc/profile 2>/dev/null; ls -la /etc/master.passwd 2>/dev/null 
 echo -e "\n" 
 
 #search for suid files
@@ -1295,64 +1095,6 @@ if [ "$thorough" = "1" ]; then
 		for i in $wwfiles; do cp --parents $i $format/ww-files/; done 2>/dev/null
 	fi
 fi
-
-#are any .plan files accessible in /home (could contain useful information)
-usrplan=`find /home -iname *.plan -exec ls -la {} \; -exec cat {} 2>/dev/null \;`
-if [ "$usrplan" ]; then
-  echo -e "${RED}[-] Plan file permissions and contents:${RESET}\n$usrplan" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$usrplan" ]; then
-  mkdir $format/plan_files/ 2>/dev/null
-  for i in $usrplan; do cp --parents $i $format/plan_files/; done 2>/dev/null
-fi
-
-bsdusrplan=`find /usr/home -iname *.plan -exec ls -la {} \; -exec cat {} 2>/dev/null \;`
-if [ "$bsdusrplan" ]; then
-  echo -e "${RED}[-] Plan file permissions and contents:${RESET}\n$bsdusrplan" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$bsdusrplan" ]; then
-  mkdir $format/plan_files/ 2>/dev/null
-  for i in $bsdusrplan; do cp --parents $i $format/plan_files/; done 2>/dev/null
-fi
-
-#are there any .rhosts files accessible - these may allow us to login as another user etc.
-rhostsusr=`find /home -iname *.rhosts -exec ls -la {} 2>/dev/null \; -exec cat {} 2>/dev/null \;`
-if [ "$rhostsusr" ]; then
-  echo -e "${YELLOW}[+] rhost config file(s) and file contents:${RESET}\n$rhostsusr" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$rhostsusr" ]; then
-  mkdir $format/rhosts/ 2>/dev/null
-  for i in $rhostsusr; do cp --parents $i $format/rhosts/; done 2>/dev/null
-fi
-
-bsdrhostsusr=`find /usr/home -iname *.rhosts -exec ls -la {} 2>/dev/null \; -exec cat {} 2>/dev/null \;`
-if [ "$bsdrhostsusr" ]; then
-  echo -e "${YELLOW}[+] rhost config file(s) and file contents:${RESET}\n$bsdrhostsusr" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$bsdrhostsusr" ]; then
-  mkdir $format/rhosts 2>/dev/null
-  for i in $bsdrhostsusr; do cp --parents $i $format/rhosts/; done 2>/dev/null
-fi
-
-rhostssys=`find /etc -iname hosts.equiv -exec ls -la {} 2>/dev/null \; -exec cat {} 2>/dev/null \;`
-if [ "$rhostssys" ]; then
-  echo -e "${YELLOW}[+] Hosts.equiv file and contents: ${RESET}\n$rhostssys" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$rhostssys" ]; then
-  mkdir $format/rhosts/ 2>/dev/null
-  for i in $rhostssys; do cp --parents $i $format/rhosts/; done 2>/dev/null
-fi
-
 
 if [ "$thorough" = "1" ]; then
   #phackt

@@ -450,18 +450,33 @@ if [ "$psinfo" ]; then
   echo -e "\n"
 fi
 
+# Add Android-specific user checks
+userinfo=`pm list users 2>/dev/null`
+if [ "$userinfo" ]; then
+    echo -e "${RED}[-] System users:${RESET}\n$userinfo"
+    echo -e "\n"
+fi
+
+# Check app users
+appusers=`ls -l /data/data 2>/dev/null`
+if [ "$appusers" ]; then
+    echo -e "${RED}[-] App users:${RESET}\n$appusers"
+    echo -e "\n"
+fi
+
+# Check user permissions
+if [ "$thorough" = "1" ]; then
+    userperm=`dumpsys package | grep -A 2 "User" 2>/dev/null`
+    if [ "$userperm" ]; then
+        echo -e "${RED}[-] User permissions:${RESET}\n$userperm"
+        echo -e "\n"
+    fi
+fi
 
 #checks to see if roots home directory is accessible
 rthmdir=`ls -ahl /root/ 2>/dev/null`
 if [ "$rthmdir" ]; then
   echo -e "${YELLOW}[+] We can read root's home directory!${RESET}\n$rthmdir" 
-  echo -e "\n"
-fi
-
-#displays /home directory permissions - check if any are lax
-homedirperms=`ls -ahl /home/ 2>/dev/null`
-if [ "$homedirperms" ]; then
-  echo -e "${RED}[-] Are permissions on /home directories lax:${RESET}\n$homedirperms" 
   echo -e "\n"
 fi
 
@@ -516,30 +531,6 @@ homedircontents=`ls -ahl ~ 2>/dev/null`
 		echo -e "\n" 
 	fi
 fi
-
-#checks for if various ssh files are accessible - this can take some time so is only 'activated' with thorough scanning switch
-if [ "$thorough" = "1" ]; then
-sshfiles=`find / \( -name "id_dsa*" -o -name "id_rsa*" -o -name "known_hosts" -o -name "authorized_hosts" -o -name "authorized_keys" \) -exec ls -la {} 2>/dev/null \;`
-	if [ "$sshfiles" ]; then
-		echo -e "${RED}[-] SSH keys/host information found in the following locations:${RESET}\n$sshfiles" 
-		echo -e "\n"
-	fi
-fi
-
-if [ "$thorough" = "1" ]; then
-	if [ "$export" ] && [ "$sshfiles" ]; then
-		mkdir $format/ssh-files/ 2>/dev/null
-		for i in $sshfiles; do cp --parents $i $format/ssh-files/; done 2>/dev/null
-	fi
-fi
-
-#TODO: remove root?
-#is root permitted to login via ssh
-sshrootlogin=`grep "PermitRootLogin " /etc/ssh/sshd_config 2>/dev/null | grep -v "#" | awk '{print  $2}'`
-if [ "$sshrootlogin" = "yes" ]; then
-  echo -e "${RED}[-] Root is allowed to login via SSH:${RESET}" ; grep "PermitRootLogin " /etc/ssh/sshd_config 2>/dev/null | grep -v "#" 
-  echo -e "\n"
-fi
 }
 
 environmental_info()
@@ -560,7 +551,12 @@ if [ "$getenforce" ]; then
     echo -e "\n"
 fi
 
-#phackt
+# Check runtime permissions
+rtperms=`dumpsys package | grep -A 2 "runtime permissions" 2>/dev/null`
+if [ "$rtperms" ]; then
+    echo -e "${RED}[-] Runtime permissions:${RESET}\n$rtperms"
+    echo -e "\n"
+fi
 
 #current path configuration
 pathinfo=`echo $PATH 2>/dev/null`
@@ -588,13 +584,6 @@ if [ -d "/usr/bin" ]; then
     ls -l /usr/bin/*sh 2>/dev/null
 fi
 echo -e "\n"
-
-#current umask value with both octal and symbolic output
-umaskvalue=`umask -S 2>/dev/null & umask 2>/dev/null`
-if [ "$umaskvalue" ]; then
-  echo -e "${RED}[-] Current umask value:${RESET}\n$umaskvalue" 
-  echo -e "\n"
-fi
 }
 
 job_info()
@@ -606,30 +595,18 @@ if [ "$scheduledjobs" ]; then
     echo -e "${RED}[-] Pending scheduled jobs:${RESET}\n$scheduledjobs"
     echo -e "\n"
 fi
-
-#contab contents
-crontabvalue=`cat /etc/crontab 2>/dev/null`
-if [ "$crontabvalue" ]; then
-  echo -e "${RED}[-] Crontab contents:${RESET}\n$crontabvalue" 
-  echo -e "\n"
+# Add WorkManager jobs
+workjobs=`dumpsys jobscheduler | grep "WorkManager" 2>/dev/null`
+if [ "$workjobs" ]; then
+    echo -e "${RED}[-] WorkManager jobs:${RESET}\n$workjobs"
+    echo -e "\n"
 fi
 
-crontabvar=`ls -la /var/spool/cron/crontabs 2>/dev/null`
-if [ "$crontabvar" ]; then
-  echo -e "${RED}[-] Anything interesting in /var/spool/cron/crontabs:${RESET}\n$crontabvar" 
-  echo -e "\n"
-fi
-
-anacronjobs=`ls -la /etc/anacrontab 2>/dev/null; cat /etc/anacrontab 2>/dev/null`
-if [ "$anacronjobs" ]; then
-  echo -e "${RED}[-] Anacron jobs and associated file permissions:${RESET}\n$anacronjobs" 
-  echo -e "\n"
-fi
-
-anacrontab=`ls -la /var/spool/anacron 2>/dev/null`
-if [ "$anacrontab" ]; then
-  echo -e "${RED}[-] When were jobs last executed (/var/spool/anacron contents):${RESET}\n$anacrontab" 
-  echo -e "\n"
+# Add Alarm Manager tasks
+alarms=`dumpsys alarm 2>/dev/null`
+if [ "$alarms" ]; then
+    echo -e "${RED}[-] Scheduled alarms:${RESET}\n$alarms"
+    echo -e "\n"
 fi
 }
 
@@ -670,10 +647,18 @@ if [ "$nsinfo" ]; then
   echo -e "\n"
 fi
 
-nsinfosysd=`systemd-resolve --status 2>/dev/null`
-if [ "$nsinfosysd" ]; then
-  echo -e "${RED}[-] Nameserver(s):${RESET}\n$nsinfosysd" 
-  echo -e "\n"
+# WiFi info
+wifiinfo=`dumpsys wifi 2>/dev/null`
+if [ "$wifiinfo" ]; then
+    echo -e "${RED}[-] WiFi information:${RESET}\n$wifiinfo"
+    echo -e "\n"
+fi
+
+# Network interfaces
+ifconfig=`ip addr 2>/dev/null`
+if [ "$ifconfig" ]; then
+    echo -e "${RED}[-] Network interfaces:${RESET}\n$ifconfig"
+    echo -e "\n"
 fi
 
 #default route configuration
@@ -943,7 +928,7 @@ if [ "$compiler" ]; then
 fi
 
 #manual check - lists out sensitive files, can we read/modify etc.
-echo -e "${RED}[-] Can we read/write sensitive files:${RESET}" ; ls -la /etc/passwd 2>/dev/null ; ls -la /etc/group 2>/dev/null ; ls -la /etc/profile 2>/dev/null; ls -la /etc/master.passwd 2>/dev/null 
+echo -e "${RED}[-] Can we read/write sensitive files:${RESET}" ; ls -la /etc/group 2>/dev/null ; ls -la /etc/profile 2>/dev/null; ls -la /etc/master.passwd 2>/dev/null 
 echo -e "\n" 
 
 #search for suid files

@@ -1,8 +1,8 @@
 # compile script:
 # mkimage -A arm64 -O linux -T script -C none -a 0 -e 0 -n "Test Script" -d boot.cmd boot.scr
-# First disable security features that might interfere
 # modify this script based on previous enum
 
+# First disable security features that might interfere
 setenv verify n
 setenv secured_boot 0
 setenv bootdelay 3
@@ -39,12 +39,16 @@ printenv loadaddr
 usb status
 
 # Basic device initialization 
-mmc dev 0
 mmc rescan
 mmc info
-mmc part
+# partitions
+mmc dev 0
+mmc part 0
+mmc part 1
+
 # vendor commands
 amlmmc list
+amlmmc part 0
 amlmmc part 1
 
 # Store command checks

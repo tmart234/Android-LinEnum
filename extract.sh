@@ -21,17 +21,6 @@ if ! adb shell su -c id | grep -q "uid=0"; then
     exit 1
 fi
 
-# Then enable debugging/ ADB
-echo "[*] Enabling debugging and ADB access..."
-adb shell su -c "setprop ro.debuggable 1"
-adb shell su -c "setprop ro.secure 0"
-adb shell su -c "setprop ro.adb.secure 0"
-adb shell su -c "setprop persist.sys.usb.config adb"
-adb shell su -c "start adbd"
-# and Remove ADB authentication
-echo "[*] Removing ADB authentication..."
-adb shell su -c "rm -rf /data/misc/adb/adb_keys"
-
 # 2. Extract partition layout and info
 echo "[*] Getting partition information..."
 adb shell su -c "cat /proc/partitions" > "${CONFIG_DIR}/partitions.txt"

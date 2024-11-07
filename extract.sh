@@ -1,6 +1,7 @@
 #!/bin/bash
 # extract_and_setup.sh - Combined extraction and QEMU preparation script
 # currently only works on Amlogic GXL but with little editing it could do more
+# supports IR driver extractions for qiling
 
 # Base directories
 DUMP_DIR="amlogic_dump"

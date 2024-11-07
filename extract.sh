@@ -52,7 +52,6 @@ adb shell su -c "cat /sys/kernel/debug/meson-ir/*" > "${DEBUG_DIR}/ir_debug.txt"
 adb shell su -c "cat /proc/modules | grep meson" > "${SYMBOLS_DIR}/module_deps.txt"
 
 echo "[*] Extracting driver files..."
-    
 # Find and pull the main driver
 adb shell su -c "find /vendor/lib/modules -name 'meson-remote.ko'" | while read module; do
     echo "[*] Found module: ${module}"
@@ -98,7 +97,7 @@ adb shell su -c "cat /proc/partitions" > "${DEBUG_DIR}/partitions.txt"
 adb shell su -c "cat /sys/firmware/devicetree/base/compatible" > "${DEBUG_DIR}/dt_compatible.txt"
 
 # Create QEMU launch script
-cat > "${DUMP_DIR}/run_amlogic.sh" << 'EOF'
+cat > "${DUMP_DIR}/qemu_amlogic.sh" << 'EOF'
 #!/bin/bash
 # QEMU script for Amlogic GXL S905X testing
 
@@ -166,9 +165,14 @@ Additional extracted partitions:
 - ${IMAGES_DIR}/misc.img (Misc config)
 - And others in ${IMAGES_DIR}/
 
+Key files for Qiling:
+- ${MODULE_DIR}/...
+- ${ROOTFS_DIR}/...
+- ${SYMBOLS_DIR}/...
+
 To run:
 1. cd ${DUMP_DIR}
-2. ./run_amlogic.sh
+2. ./qemu_amlogic.sh
 
 For debugging:
 - Check ${DEBUG_DIR} for partition headers and system info

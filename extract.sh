@@ -6,9 +6,12 @@
 DUMP_DIR="amlogic_dump"
 IMAGES_DIR="${DUMP_DIR}/images"
 DEBUG_DIR="${DUMP_DIR}/debug"
+ROOTFS_DIR="${DUMP_DIR}/rootfs"
+SYMBOLS_DIR="${DUMP_DIR}/symbols"
+MODULE_DIR="${ROOTFS_DIR}/lib/modules"
 
 # Create directory structure
-mkdir -p "${IMAGES_DIR}" "${DEBUG_DIR}"
+mkdir -p "${IMAGES_DIR}" "${DEBUG_DIR}" "${ROOTFS_DIR}" "${SYMBOLS_DIR}" "${MODULE_DIR}"
 
 echo "[+] Starting Amlogic GXL extraction..."
 
@@ -36,6 +39,35 @@ PARTITIONS=(
     "rsv:2203648:32768:Reserved"
     "odm:2875392:32768:ODM partition"
 )
+
+echo "[*] Extracting symbols..."    
+# Get full kernel symbol table
+adb shell su -c "cat /proc/kallsyms" > "${SYMBOLS_DIR}/kallsyms.txt"
+# Get module specific symbols
+adb shell su -c "cat /sys/module/meson_ir/sections/.*" > "${SYMBOLS_DIR}/meson_ir_sections.txt"
+# Try to get debug info
+adb shell su -c "cat /sys/kernel/debug/meson-ir/*" > "${DEBUG_DIR}/ir_debug.txt" 2>/dev/null
+# Get module dependencies
+adb shell su -c "cat /proc/modules | grep meson" > "${SYMBOLS_DIR}/module_deps.txt"
+
+echo "[*] Extracting driver files..."
+    
+# Find and pull the main driver
+adb shell su -c "find /vendor/lib/modules -name 'meson-remote.ko'" | while read module; do
+    echo "[*] Found module: ${module}"
+    adb pull "${module}" "${MODULE_DIR}/"
+    
+    # Get module info
+    adb shell su -c "modinfo ${module}" > "${DEBUG_DIR}/module_info.txt"
+done
+# Get any dependencies
+adb shell su -c "ldd /vendor/lib/modules/meson-remote.ko" 2>/dev/null | while read dep; do
+    if [[ $dep == /* ]]; then
+        echo "[*] Pulling dependency: ${dep}"
+        adb pull "${dep}" "${MODULE_DIR}/"
+    fi
+done
+
 
 # Extract partitions
 for part in "${PARTITIONS[@]}"; do
@@ -67,30 +99,52 @@ adb shell su -c "cat /sys/firmware/devicetree/base/compatible" > "${DEBUG_DIR}/d
 # Create QEMU launch script
 cat > "${DUMP_DIR}/run_amlogic.sh" << 'EOF'
 #!/bin/bash
-# QEMU script for Amlogic GXL S905X
+# QEMU script for Amlogic GXL S905X testing
 
-MACHINE_OPTS="-M virt, -cpu cortex-a53 -smp 4 -m 2048"
-DRIVE_OPTS="-drive if=pflash,file=${IMAGES_DIR}/bootloader.img,format=raw"
-DRIVE_OPTS+=" -drive if=virtio,file=${IMAGES_DIR}/system.img,format=raw"
-DRIVE_OPTS+=" -drive if=virtio,file=${IMAGES_DIR}/vendor.img,format=raw"
-DRIVE_OPTS+=" -drive if=virtio,file=${IMAGES_DIR}/recovery.img,format=raw"
+MACHINE_OPTS="-M virt,secure=on -cpu cortex-a53 -smp 4 -m 2048"
+# Memory layout matching device
+MEM_OPTS="-global loader.addr=0x01080000"
+# Drives with proper memory mapping
+DRIVE_OPTS="-drive if=pflash,file=${IMAGES_DIR}/bootloader.img,format=raw \
+            -drive if=none,file=${IMAGES_DIR}/system.img,id=systemdisk \
+            -device virtio-blk-device,drive=systemdisk \
+            -drive if=none,file=${IMAGES_DIR}/vendor.img,id=vendordisk \
+            -device virtio-blk-device,drive=vendordisk"
 BOOT_OPTS="-bios ${IMAGES_DIR}/boot.img"
 DTB_OPTS="-dtb ${IMAGES_DIR}/dtb.img"
-DEBUG_OPTS="-d guest_errors,unimp -D qemu.log"
-NET_OPTS="-netdev user,id=net0,hostfwd=tcp::5555-:5555 -device virtio-net-device,netdev=net0"
+# Debug options enhanced
+DEBUG_OPTS="-d unimp,guest_errors,int,mmu,exec \
+            -D qemu.log \
+            -monitor telnet:127.0.0.1:55555,server,nowait \
+            -serial mon:stdio"
+# Network for ADB
+NET_OPTS="-netdev user,id=net0,hostfwd=tcp::5555-:5555 \
+          -device virtio-net-device,netdev=net0"
+# GPU disabled since we don't need it
+DISPLAY_OPTS="-display none"
 
 qemu-system-arm \
     ${MACHINE_OPTS} \
+    ${MEM_OPTS} \
     ${DRIVE_OPTS} \
     ${BOOT_OPTS} \
     ${DTB_OPTS} \
     ${DEBUG_OPTS} \
     ${NET_OPTS} \
-    -serial mon:stdio \
+    ${DISPLAY_OPTS} \
     -nographic
 
-# To debug boot process, uncomment:
-# -s -S (then connect with GDB)
+# Debug commands:
+# 1. Connect to monitor:
+#    telnet localhost 55555
+#
+# 2. Attach GDB:
+#    Add -s -S to command line
+#    arm-none-eabi-gdb
+#    (gdb) target remote localhost:1234
+#
+# 3. View full logs:
+#    tail -f qemu.log
 EOF
 
 chmod +x "${DUMP_DIR}/run_amlogic.sh"

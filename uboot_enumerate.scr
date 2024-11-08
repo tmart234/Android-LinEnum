@@ -38,6 +38,15 @@ printenv EnableSelinux
 printenv loadaddr
 usb status
 
+# General NV storage info
+nv info
+# Shows key programming status
+nv key_info
+# Check if specific keys exist
+nv exist key
+# To see efuse status including secure boot info
+efuse dump
+
 # Basic device initialization 
 mmc rescan
 mmc info

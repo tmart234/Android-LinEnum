@@ -664,6 +664,49 @@ if [ ! "$arpinfo" ] && [ "$arpinfoip" ]; then
   echo -e "\n"
 fi
 
+# Check MAC addresses (multiple methods for Android 8.1)
+echo -e "${RED}[-] MAC Address Information:${RESET}"
+# Check in /sys
+for interface in $(ls /sys/class/net/); do
+    mac=$(cat /sys/class/net/$interface/address 2>/dev/null)
+    if [ "$mac" ]; then
+        echo "Interface $interface MAC: $mac"
+    fi
+done
+# Alternative method using busybox if available
+if [ -f "/system/xbin/busybox" ] || [ -f "/system/bin/busybox" ]; then
+    busybox ifconfig | grep -i "hwaddr" 2>/dev/null
+fi
+
+# Check current IP configuration
+echo -e "\n${RED}[-] IP Configuration Method:${RESET}"
+# Check DHCP status through getprop
+dhcp_status=$(getprop dhcp.wlan0.result 2>/dev/null)
+if [ "$dhcp_status" ]; then
+    echo "DHCP Status: $dhcp_status"
+fi
+
+# Check IP configuration through settings
+ip_mode=$(settings get global wifi_static_ip_addresses 2>/dev/null)
+if [ "$ip_mode" ]; then
+    echo "Static IP Configuration: $ip_mode"
+fi
+
+# Get detailed network information from netcfg or ip
+if [ -f "/system/bin/netcfg" ]; then
+    echo -e "\n${RED}[-] Network Configuration:${RESET}"
+    netcfg 2>/dev/null
+elif [ -f "/system/bin/ip" ]; then
+    echo -e "\n${RED}[-] Network Configuration:${RESET}"
+    ip addr show 2>/dev/null
+fi
+
+# Check DHCP lease information
+if [ -f "/data/misc/dhcp/dnsmasq.leases" ]; then
+    echo -e "\n${RED}[-] DHCP Lease Information:${RESET}"
+    cat /data/misc/dhcp/dnsmasq.leases 2>/dev/null
+fi
+
 #dns settings
 nsinfo=`grep "nameserver" /etc/resolv.conf 2>/dev/null`
 if [ "$nsinfo" ]; then
@@ -678,12 +721,26 @@ if [ "$wifiinfo" ]; then
     echo -e "\n"
 fi
 
+# Get WiFi configuration details
+if [ -d "/data/misc/wifi" ]; then
+    echo -e "\n${RED}[-] WiFi Configuration:${RESET}"
+    ls -l /data/misc/wifi/wpa_supplicant.conf 2>/dev/null
+    if [ "$thorough" = "1" ]; then
+        cat /data/misc/wifi/wpa_supplicant.conf 2>/dev/null
+    fi
+fi
+
 # Network interfaces
 ifconfig=`ip addr 2>/dev/null`
 if [ "$ifconfig" ]; then
     echo -e "${RED}[-] Network interfaces:${RESET}\n$ifconfig"
     echo -e "\n"
 fi
+
+# Check network interface properties
+for prop in $(getprop | grep -E "dhcp.|net.|wifi." | cut -d: -f1); do
+    echo "$prop: $(getprop ${prop#[})" 2>/dev/null
+done
 
 #default route configuration
 defroute=`route 2>/dev/null | grep default`
@@ -732,13 +789,6 @@ if [ "$mobileif" ]; then
     echo -e "\n"
 fi
 
-#wireless configuration
-wirelessconf=`ls -la /data/misc/wifi 2>/dev/null`
-if [ "$wirelessconf" ]; then
-    echo -e "${RED}[-] Wireless configuration:${RESET}\n$wirelessconf"
-    echo -e "\n"
-fi
-
 if [ "$androidver" ]; then
     #check for VPN configurations
     vpnconf=`find /data/misc/vpn -type f 2>/dev/null`
@@ -771,13 +821,6 @@ if [ "$androidver" ]; then
     if [ "$cast" ]; then
         echo -e "${RED}[-] Cast/media routing configuration:${RESET}\n$cast"
     fi
-fi
-
-#check network properties
-netprops=`getprop | grep -E "net.|wifi.|dhcp." 2>/dev/null`
-if [ "$netprops" ]; then
-  echo -e "${RED}[-] Network properties:${RESET}\n$netprops" 
-  echo -e "\n"
 fi
 }
 

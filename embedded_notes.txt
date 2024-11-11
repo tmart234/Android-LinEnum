@@ -1,0 +1,159 @@
+Embedded Systems Pentesting Guide
+
+Memory Types and Common Partitions
+RAM-Based Storage Systems
+ramfs
+- Virtual filesystem residing in volatile memory
+- Basic filesystem driver used by mount command
+- No size restrictions - can grow until RAM is exhausted
+- No swap capability
+
+ramdisk
+- Virtual disk implemented in volatile memory using ramfs
+- Contents wiped on reboot
+- Used for temporary storage and fast access
+- Common size limitations based on available RAM
+
+initramfs
+- Initial RAM filesystem built into kernel
+- Uses cpio archive format
+- Essential contents:
+	-/dev/console
+	-/root directory
+	-Basic system utilities
+	-Initial device nodes
+	-Boot scripts
+- Provides early userspace environment
+
+initrd (Initial RAM Disk)
+- Early-stage filesystem for loading drivers
+- Primarily for hardware initialization
+- Implementation options:
+	- ramfs-based
+	- tmpfs-based
+- Loaded by bootloader before kernel
+
+
+Storage Types Overview
+NV (Non-Volatile)
+- persistant memory
+Types include:
+- ROM (Read Only Memory)
+- EEPROM (Electrically Erasable Programmable ROM)
+- Flash Memory
+- eFuses (One-Time Programmable)
+- Anti-rollback counters
+- Secure boot keys?
+- Device unique IDs
+
+
+eMMC (embedded Multi-Media Card)
+- Block management and Multiple partitions support
+Boot partition table
+- Operating system (kernel)
+- Vendor Applications
+- User Applications and data
+- Recovery images
+
+NAND Flash
+- Simple firmware images
+- Log files
+- Temporary data
+
+
+Initial Access Points
+UART Interface
+- Can provide access to:
+	- Serial console
+	- Bootloader interface
+
+Memory Access Methods
+
+Direct Memory Access
+- Root-level Android access
+- Debugfs interfaces
+	- Example: /sys/kernel/debug/aml_reg/paddr
+	- Uses ioremap for kernel page-table mapping
+- Potential limitations:
+	- TrustZone restrictions
+	- Secure memory regions
+	- Memory protection units
+	
+Secure Monitor Call (SMC) Interface
+- Bridge between secure and non-secure worlds
+- Key analysis points:
+	- Identify implemented SMC handlers
+	- Analyze parameter validation
+	- Look for memory access primitives
+	- Check for authentication bypass opportunities
+	
+ATF Secure Boot Analysis
+Boot Chain Components
+1) BootROM (BL1)
+- Stored in SoC
+- First stage bootloader
+- Typically not directly accessible
+2) Secondary Bootloader (BL2)
+- Loaded from storage
+- Responsible for authentication and boot verification
+- loads TrustZone (BL31)
+3) ARM Trusted Firmware (BL31)
+- Manages secure world
+- Handles SMC calls
+- Controls secure memory access
+
+
+Methods for getting a decrypted kernel and dtb files:
+- Uboot commands: mmc write (direct block writes), store write (Amlogic store subsystem), amlmmc commands (Amlogic specific MMC)
+- other uboot commands: emmc write, nand write, ext4write
+- Amlogic specific commands: aml sysrecovery commands, store dtb write, store rom_write, Using different partitions shown in partition table
+- Bootrom: Using decryption oracle to decrypt and save each chunk, Save decrypted data through bootrom protocol
+- Direct memory: Save decrypted memory ranges, Memory to memory copies to safe regions, Memory dumps through UART
+
+Methods for exfiltrating decrypted kernel and dtb files off the board:
+- uboot: Direct USB writes (risky)
+- SW debug: ADB partition pull, recovery mode pull, and/or Fastboot dump commands
+- Bootrom decryption, pyamlboot tools, or force bootrom mode
+- network: uboot network commands like TFTP boot dump
+- hardware: direct eMMC reader, UART dump?, JTAG
+
+Boot ROM Extraction Techniques
+Direct Memory Access
+- Memory Mapping Method
+	- bootrom mem access in userspace
+- Debug Interface Method
+	- Access via JTAG/SWD
+	- Use hardware debugger
+	- Direct memory reading
+
+BL2 Extraction Techniques
+Flash Memory Access
+- Direct Reading
+	dd if=/dev/block/mmcblk0 of=bl2.bin bs=1k skip=1024 count=64
+- Recovery Mode Method
+	- Boot to recovery
+	- Use fastboot/adb
+	- Pull partition dumps
+Memory Dump Method
+- Runtime Extraction
+- UART/JTAG Extraction
+	- Connect debug interface
+	- Set breakpoints
+	- Dump memory regions
+
+Post-Exploitation
+Custom Boot Chain
+1) U-Boot Modifications
+- Disable USB detection
+	-Enables loading modified/custom operating systems
+- Modify boot source
+	- Enables booting from external media without modifying internal storage
+- Bypass authentication
+	- Allow unsigned code execution while maintaining original firmware
+2) Custom OS Loading
+- Alternative bootloaders
+- Custom kernel parameters (ex: bootargs)
+	- Disable security features while maintaining functionality
+	- Development, debugging, running unauthorized software
+- Modified DTB files
+	- Enable disabled peripherals, modify memory mapping

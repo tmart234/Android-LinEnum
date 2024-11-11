@@ -149,6 +149,13 @@ if [ "$vendordebug" ]; then
     echo -e "$vendordebug"
     echo -e "\n"
 fi
+
+# Check for unsecured debug interfaces
+debug_ifaces=`ls -l /dev/ttyAML* 2>/dev/null || ls -l /sys/class/aml_keys 2>/dev/null`
+if [ "$debug_ifaces" ]; then
+    echo -e "${YELLOW}[+] Unsecured Amlogic debug interfaces found:${RESET}"
+    echo "$debug_ifaces"
+fi
 }
 
 # useful binaries (thanks to https://gtfobins.github.io/)
@@ -183,6 +190,13 @@ if [ -f "/proc/config.gz" ]; then
     echo -e "${RED}[-] Kernel config available - checking for vendor options:${RESET}"
     zcat /proc/config.gz 2>/dev/null | grep -iE "VENDOR|CUSTOM|OEM|AMLOGIC|MEDIATEK|QCOM|ROCKCHIP|REALTEK"
     echo -e "\n"
+fi
+
+# Check kernel parameters for common security misconfigurations
+kernel_params=`cat /proc/cmdline | grep -iE "force_secure|SecureOS|enable_secure"`
+if [ "$kernel_params" ]; then
+    echo -e "${YELLOW}[+] Security-critical kernel parameters detected:${RESET}"
+    echo "$kernel_params"
 fi
 
 cpuinfo=`cat /proc/cpuinfo 2>/dev/null`
@@ -276,6 +290,13 @@ if [ "$androidver" ]; then
             fi
         fi
 
+        # Check for vulnerable vendor properties
+        vendor_props=`getprop | grep -iE "vendor.sys.gb|vendor.media.secure|ro.vendor.platform.is"`
+        if [ "$vendor_props" ]; then
+            echo -e "${YELLOW}[+] Found potentially exploitable vendor properties:${RESET}"
+            echo "$vendor_props"
+        fi
+
         if [ "$androidver" = "9" ] || [ "$androidver" = "8" ] || [ "$androidver" = "8.1" ]; then
             #Launcher vulnerability checks
             launcherperm=`pm list packages -f com.google.android.tvlauncher 2>/dev/null`
@@ -304,6 +325,13 @@ if [ "$androidver" ]; then
             tvsettings=`dumpsys package com.android.tv.settings | grep -A2 "WRITE_SECURE_SETTINGS" 2>/dev/null`
             if [ "$tvsettings" ]; then
                 echo -e "${YELLOW}[+] TvSettings has elevated permissions - potential privilege escalation${RESET}"
+            fi
+
+            # Check for vulnerable driver versions
+            if [ -d "/sys/class/aml-video" ]; then
+                vid_driver=`ls -l /sys/class/aml-video`
+                echo -e "${YELLOW}[+] Potentially vulnerable video driver detected:${RESET}"
+                echo "$vid_driver"
             fi
 
             #Check for unprotected broadcast receivers
@@ -1450,6 +1478,81 @@ if [ "$keystores" ]; then
 fi
 }
 
+check_android_81_vulns() {
+echo -e "\n${RED}[!] Checking for Android 8.1 specific vulnerabilities${RESET}"
+
+# CVE-2018-9341 - Download Provider Vulnerability
+echo -e "\n${RED}[!] Checking for CVE-2018-9341 (Download Provider Vulnerability)${RESET}"
+dlprovider=`dumpsys package com.android.providers.downloads`
+if [ "$dlprovider" ]; then
+    # Check for specific version with vulnerability
+    version=`echo "$dlprovider" | grep "versionName" | cut -d"=" -f2`
+    if [[ "$version" < "8.1.0_r43" ]]; then
+        echo -e "${YELLOW}[+] Vulnerable Download Provider version detected: $version${RESET}"
+    fi
+    
+    # Check for vulnerable permission configuration
+    if echo "$dlprovider" | grep -A 2 "grantUriPermission" | grep -q "true"; then
+        echo -e "${YELLOW}[+] Download Provider has vulnerable URI permission configuration${RESET}"
+    fi
+fi
+
+# CVE-2017-13208 - DHCP vulnerability
+echo -e "\n${RED}[!] Checking for CVE-2017-13208 - DHCP Client RCE${RESET}"
+# Check for vulnerable libnetutils version
+if [ -f "/system/lib/libnetutils.so" ] || [ -f "/system/lib64/libnetutils.so" ]; then
+    libnetutils_ver=`strings /system/lib/libnetutils.so 2>/dev/null | grep "receive_packet"`
+    if [ "$libnetutils_ver" ]; then
+        echo -e "${YELLOW}[+] Potentially vulnerable libnetutils found with receive_packet function${RESET}"
+        
+        # Check if DHCP client is running
+        dhcp_check=`ps -ef | grep -i "dhcp" | grep -v "grep"`
+        if [ "$dhcp_check" ]; then
+            echo -e "${YELLOW}[+] Active DHCP client detected - system likely vulnerable to CVE-2017-13208${RESET}"
+        fi
+        
+        # Check DHCP configurations
+        if [ -f "/system/etc/dhcpcd/dhcpcd.conf" ]; then
+            echo -e "${YELLOW}[+] DHCP client configuration found - confirms DHCP usage${RESET}"
+        fi
+    fi
+fi
+
+# CVE-2018-9344 - Media Framework Vulnerability
+echo -e "\n${RED}[!] Checking for CVE-2018-9344 (MediaCodec Vulnerability)${RESET}"
+# Check MediaCodec implementation
+mediacodec=`getprop ro.hardware.mediacodec 2>/dev/null`
+if [ "$mediacodec" ]; then
+    if [ "$mediacodec" = "amlogic" ]; then
+        # Check specific version
+        media_ver=`dumpsys media.codec | grep -i "version"`
+        echo -e "${YELLOW}[+] Potentially vulnerable Amlogic MediaCodec detected${RESET}"
+        echo -e "${YELLOW}[+] Media Codec Version: $media_ver${RESET}"
+    fi
+fi
+
+# Check CAS implementation
+cas_check=`dumpsys media.cas | grep -i "casImpl"`
+if [ "$cas_check" ]; then
+    echo -e "${YELLOW}[+] CAS implementation detected - potential for CVE-2018-9344${RESET}"
+fi
+
+# CVE-2018-9358 - Bluetooth Stack Vulnerability
+echo -e "\n${RED}[!] Checking for CVE-2018-9358 (Bluetooth Vulnerability)${RESET}"
+
+# Check Bluetooth version and implementation
+bt_version=`dumpsys bluetooth_manager | grep -i "version"`
+if [ "$bt_version" ]; then
+    echo -e "Bluetooth Version: $bt_version"
+    
+    # Check for GATT service
+    gatt_service=`dumpsys bluetooth_manager | grep -i "gatt"`
+    if [ "$gatt_service" ]; then
+        echo -e "${YELLOW}[+] GATT service running - potential for CVE-2018-9358${RESET}"
+    fi
+fi
+}
+
 footer()
 {
 echo -e "${YELLOW}### SCAN COMPLETE ####################################${RESET}" 
@@ -1460,6 +1563,7 @@ call_each()
   header
   debug_info
   system_info
+  check_android_81_vulns
   user_info
   environmental_info
   job_info

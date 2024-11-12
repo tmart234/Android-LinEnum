@@ -45,10 +45,6 @@ debug_info()
 echo "[-] Debug Info" 
 
 echo -e "${YELLOW}[*] Attempting to enable debugging and ADB access...${RESET}"
-# Try to set properties directly
-setprop ro.debuggable 1 2>/dev/null
-setprop ro.secure 0 2>/dev/null
-setprop ro.adb.secure 0 2>/dev/null
 setprop persist.sys.usb.config adb 2>/dev/null
 
 # Try to start ADB daemon
@@ -60,7 +56,6 @@ if [ -d "/data/misc/adb" ]; then
     rm -rf /data/misc/adb/adb_keys 2>/dev/null
 fi
 
-# Verify the changes
 echo -e "${RED}[-] Current ADB/Debug status:${RESET}"
 echo "ro.debuggable: $(getprop ro.debuggable)"
 echo "ro.secure: $(getprop ro.secure)"

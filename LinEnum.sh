@@ -44,27 +44,39 @@ debug_info()
 {
 echo "[-] Debug Info" 
 
-echo -e "${YELLOW}[*] Attempting to enable debugging and ADB access...${RESET}"
-setprop persist.sys.usb.config adb 2>/dev/null
-
-# Try to start ADB daemon
-start adbd 2>/dev/null
-
-# Remove ADB authentication if we have permission
-if [ -d "/data/misc/adb" ]; then
-    echo -e "${YELLOW}[*] Attempting to remove ADB authentication...${RESET}"
-    rm -rf /data/misc/adb/adb_keys 2>/dev/null
-fi
-
 echo -e "${RED}[-] Current ADB/Debug status:${RESET}"
 echo "ro.debuggable: $(getprop ro.debuggable)"
 echo "ro.secure: $(getprop ro.secure)"
 echo "ro.adb.secure: $(getprop ro.adb.secure)"
-echo "persist.sys.usb.config: $(getprop persist.sys.usb.config)"
-echo "adbd status: $(getprop init.svc.adbd)"
+echo "persist.sys.usb.config: $(getprop persist.sys.usb.config 2>/dev/null || echo 'N/A')"
+echo "service.adb.tcp.port: $(getprop service.adb.tcp.port 2>/dev/null || echo 'Disabled')"
+echo "adbd status: $(getprop init.svc.adbd 2>/dev/null || echo 'N/A')"
+echo "Developer Options: $(settings get global development_settings_enabled 2>/dev/null || echo 'N/A (or inaccessible)')"
+echo "OEM Unlocking Allowed: $(settings get global development_settings_oem_unlock_enable 2>/dev/null || echo 'N/A (or inaccessible)')" # Might require root
+echo "ro.oem_unlock_supported: $(getprop ro.oem_unlock_supported 2>/dev/null || echo 'N/A')"
 
-if [ "$keyword" ]; then 
-	echo "[+] Searching for the keyword $keyword in conf, php, ini and log files" 
+# Check for vendor debug features/props
+echo -e "\n${RED}--- Vendor Debug Properties ---${RESET}"
+vendordebug=$(getprop | grep -iE 'debug|test|eng|factory|diag|oem' 2>/dev/null)
+if [ "$vendordebug" ]; then
+    echo -e "$vendordebug"
+else
+    echo "[-] No common vendor debug properties found."
+fi
+
+# Check for common debug interfaces (e.g., Amlogic UART)
+echo -e "\n${RED}--- Debug Interfaces ---${RESET}"
+debug_ifaces=$(ls -l /dev/tty*USB* /dev/tty*ACM* /dev/ttyAML* /dev/ttyMSM* /sys/class/aml_keys* 2>/dev/null)
+if [ "$debug_ifaces" ]; then
+    echo -e "${YELLOW}[+] Potential debug interfaces found:${RESET}"
+    echo "$debug_ifaces"
+else
+    echo "[-] No common debug interfaces found in /dev or /sys."
+fi
+echo ""
+
+if [ "$keyword" ]; then
+	echo "[+] Searching for keyword '$keyword' in .conf, .xml, .log, .sh, .prop files."
 fi
 
 if [ "$report" ]; then 
@@ -89,17 +101,10 @@ if [ "$export" ]; then
   mkdir $format 2>/dev/null
 fi
 
-if [ "$sudopass" ]; then 
-  echo -e "\e[00;35m[+] Please enter password - INSECURE - really only for CTF use!${RESET}"
-  read -s userpassword
-  echo 
-fi
-
-who=`whoami` 2>/dev/null 
-echo -e "\n" 
-
-echo -e "${YELLOW}Scan started at:"; date 
-echo -e "${RESET}\n" 
+whoami=$(whoami 2>/dev/null || id -un 2>/dev/null) # Get current user
+echo -e "\n${YELLOW}Scan running as user: $whoami${RESET}"
+echo -e "${YELLOW}Scan started at: $(date)${RESET}\n"
+sleep 1
 
 #Android debug checks if Android detected
 androidver=`getprop ro.build.version.release 2>/dev/null`
@@ -167,17 +172,16 @@ if [ "$unameinfo" ]; then
   echo -e "\n" 
 fi
 
-# Kernel version and build info
-kernelver=`cat /proc/version 2>/dev/null`
+# Detailed Kernel version and build info
+kernelver=$(cat /proc/version 2>/dev/null)
 if [ "$kernelver" ]; then
-    echo -e "Kernel version:\n$kernelver"
-    
+    echo -e "${RED}--- /proc/version ---${RESET}\n$kernelver"
     # Extract and highlight vendor build info
-    vendorbuild=`echo "$kernelver" | grep -o "(.*)"`
+    vendorbuild=$(echo "$kernelver" | grep -oE '\b(eng|userdebug)\b|\(([^)]+)\)')
     if [ "$vendorbuild" ]; then
-        echo -e "${YELLOW}[+] Custom vendor build detected:${RESET} $vendorbuild"
+        echo -e "${YELLOW}[+] Custom/Debug build info detected in kernel string:${RESET} $vendorbuild"
     fi
-    echo -e "\n"
+    echo ""
 fi
 
 # Check kernel config

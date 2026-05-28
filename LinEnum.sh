@@ -21,14 +21,13 @@ echo -e "\n${RED}#########################################################${RESE
 echo -e "${RED}#${RESET}" "${YELLOW}Local Linux Enumeration & Privilege Escalation Script (for Android)${RESET}" "${RED}#${RESET}"
 echo -e "${RED}#########################################################${RESET}"
 echo -e "${YELLOW}# $version${RESET}\n"
-echo -e "${YELLOW}# Example: ./LinEnum.sh -k keyword -r report -e /tmp/ -t ${RESET}\n"
+echo -e "${YELLOW}# Example: ./LinEnum.sh -k keyword -r report -e /sdcard/ -t ${RESET}\n"
 
 		echo "OPTIONS:"
 		echo "-k	Enter keyword"
 		echo "-e	Enter export location"
-		echo "-s 	Supply user password for sudo checks (INSECURE)"
 		echo "-t	Include thorough (lengthy) tests"
-		echo "-r	Enter report name" 
+		echo "-r	Enter report name"
 		echo "-h	Displays this help text"
 		echo -e "\n"
 		echo "Running with no options = limited scans/no output file"
@@ -412,7 +411,7 @@ if [ "$verityinfo" ]; then
     echo -e "\n"
 fi
 
-boottype=`getprop getprop ro.bootloader 2>/dev/null; getprop getprop ro.boot.bootloader 2>/dev/null;`
+boottype=`getprop ro.bootloader 2>/dev/null; getprop ro.boot.bootloader 2>/dev/null;`
 if [ "$boottype" ]; then
     echo -e "${YELLOW}[-] Bootloader name and version:${RESET}\n$boottype"
     echo -e "\n"
@@ -524,16 +523,16 @@ if [ "$thorough" = "1" ]; then
     fi
 fi
 
-#checks to see if roots home directory is accessible
-rthmdir=`ls -ahl /root/ 2>/dev/null`
+#checks to see if the privileged /data tree is accessible (normally restricted to system/root)
+rthmdir=`ls -ahl /data/ 2>/dev/null; ls -ahl /data/system/ 2>/dev/null`
 if [ "$rthmdir" ]; then
-  echo -e "${YELLOW}[+] We can read root's home directory!${RESET}\n$rthmdir" 
+  echo -e "${YELLOW}[+] We can read the privileged /data directory!${RESET}\n$rthmdir"
   echo -e "\n"
 fi
 
 #looks for files we can write to that don't belong to us
 if [ "$thorough" = "1" ]; then
-  grfilesall=`find / -writable ! -user \`whoami\` -type f ! -path "/proc/*" ! -path "/sys/*" -exec ls -al {} \; 2>/dev/null`
+  grfilesall=`find /data /system /vendor /storage -writable ! -user \`whoami\` -type f ! -path "/proc/*" ! -path "/sys/*" -exec ls -al {} \; 2>/dev/null`
   if [ "$grfilesall" ]; then
     echo -e "${RED}[-] Files not owned by user but writable by group:${RESET}\n$grfilesall" 
     echo -e "\n"
@@ -894,29 +893,31 @@ if [ "$broadcasts" ]; then
     echo -e "\n"
 fi
 
-usrrcdread=`ls -la /usr/local/etc/rc.d 2>/dev/null`
-if [ "$usrrcdread" ]; then
-  echo -e "${RED}[-] /usr/local/etc/rc.d binary permissions:${RESET}\n$usrrcdread" 
+#Android init service state (init.svc.* properties show running/stopped native services)
+initsvc=`getprop | grep -E "\[init\.svc\." 2>/dev/null`
+if [ "$initsvc" ]; then
+  echo -e "${RED}[-] Android init services (init.svc.*):${RESET}\n$initsvc"
   echo -e "\n"
 fi
 
-#rc.d files NOT belonging to root!
-usrrcdperms=`find /usr/local/etc/rc.d \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
-if [ "$usrrcdperms" ]; then
-  echo -e "${RED}[-] /usr/local/etc/rc.d files not belonging to root:${RESET}\n$usrrcdperms" 
-  echo -e "\n"
-fi
-
-initread=`ls -la /etc/init/ 2>/dev/null`
+#Android init .rc files - native service definitions, often a privesc surface
+initread=`ls -la /init.rc /init*.rc /system/etc/init/ /vendor/etc/init/ /odm/etc/init/ 2>/dev/null`
 if [ "$initread" ]; then
-  echo -e "${RED}[-] /etc/init/ config file permissions:${RESET}\n$initread"
+  echo -e "${RED}[-] Android init .rc locations and permissions:${RESET}\n$initread"
   echo -e "\n"
 fi
 
-# upstart scripts not belonging to root
-initperms=`find /etc/init \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
+#init .rc files NOT belonging to root (writable definitions can hijack privileged services)
+initperms=`find /system/etc/init /vendor/etc/init /odm/etc/init / -maxdepth 1 -name "*.rc" \! -uid 0 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
 if [ "$initperms" ]; then
-   echo -e "${RED}[-] /etc/init/ config files not belonging to root:${RESET}\n$initperms"
+   echo -e "${YELLOW}[+] init .rc files not belonging to root:${RESET}\n$initperms"
+   echo -e "\n"
+fi
+
+#world-writable init .rc files
+initww=`find /system/etc/init /vendor/etc/init /odm/etc/init / -maxdepth 1 -name "*.rc" -perm -2 -type f 2>/dev/null |xargs -r ls -la 2>/dev/null`
+if [ "$initww" ]; then
+   echo -e "${YELLOW}[+] World-writable init .rc files:${RESET}\n$initww"
    echo -e "\n"
 fi
 
@@ -961,46 +962,60 @@ fi
 
 software_configs()
 {
-echo -e "${YELLOW}### SOFTWARE #############################################${RESET}" 
-#apache details - if installed
-apachever=`apache2 -v 2>/dev/null; httpd -v 2>/dev/null`
-if [ "$apachever" ]; then
-  echo -e "${RED}[-] Apache version:${RESET}\n$apachever" 
+echo -e "${YELLOW}### SOFTWARE #############################################${RESET}"
+
+#build fingerprint and ROM identity
+buildfp=`getprop ro.build.fingerprint 2>/dev/null`
+if [ "$buildfp" ]; then
+  echo -e "${RED}[-] Build fingerprint:${RESET}\n$buildfp"
+  echo -e "${RED}[-] Build description:${RESET} `getprop ro.build.description 2>/dev/null`"
+  echo -e "${RED}[-] Security patch level:${RESET} `getprop ro.build.version.security_patch 2>/dev/null`"
   echo -e "\n"
 fi
 
-#what account is apache running under
-apacheusr=`grep -i 'user\|group' /etc/apache2/envvars 2>/dev/null |awk '{sub(/.*\export /,"")}1' 2>/dev/null`
-if [ "$apacheusr" ]; then
-  echo -e "${RED}[-] Apache user configuration:${RESET}\n$apacheusr" 
+#SELinux enforcement status (key Android privesc surface)
+seinfo=`getenforce 2>/dev/null; getprop ro.boot.selinux 2>/dev/null; getprop ro.build.selinux 2>/dev/null`
+if [ "$seinfo" ]; then
+  echo -e "${RED}[-] SELinux status (getenforce / ro.boot.selinux / ro.build.selinux):${RESET}\n$seinfo"
   echo -e "\n"
 fi
 
-if [ "$export" ] && [ "$apacheusr" ]; then
-  mkdir --parents $format/etc-export/apache2/ 2>/dev/null
-  cp /etc/apache2/envvars $format/etc-export/apache2/envvars 2>/dev/null
-fi
-
-#installed apache modules
-apachemodules=`apache2ctl -M 2>/dev/null; httpd -M 2>/dev/null`
-if [ "$apachemodules" ]; then
-  echo -e "${RED}[-] Installed Apache modules:${RESET}\n$apachemodules" 
+#installed packages via package manager
+pkgs=`pm list packages 2>/dev/null`
+if [ "$pkgs" ]; then
+  pkgcount=`echo "$pkgs" | wc -l`
+  echo -e "${RED}[-] Installed packages ($pkgcount):${RESET}\n$pkgs"
   echo -e "\n"
-fi
 
-#anything in the default http home dirs (a thorough only check as output can be large)
-if [ "$thorough" = "1" ]; then
-  apachehomedirs=`ls -alhR /var/www/ 2>/dev/null; ls -alhR /srv/www/htdocs/ 2>/dev/null; ls -alhR /usr/local/www/apache2/data/ 2>/dev/null; ls -alhR /opt/lampp/htdocs/ 2>/dev/null`
-  if [ "$apachehomedirs" ]; then
-    echo -e "${RED}[-] www home dir contents:${RESET}\n$apachehomedirs" 
+  #third-party (sideloaded) packages are a more interesting subset
+  tppkgs=`pm list packages -3 2>/dev/null`
+  if [ "$tppkgs" ]; then
+    echo -e "${YELLOW}[+] Third-party / sideloaded packages:${RESET}\n$tppkgs"
     echo -e "\n"
   fi
 fi
 
-#check app configs
+#packages holding dangerous/privileged permissions
+if [ "$thorough" = "1" ]; then
+  privperms=`pm list packages -f 2>/dev/null`
+  if [ "$privperms" ]; then
+    echo -e "${RED}[-] Packages installed under /system (privileged paths):${RESET}"
+    echo "$privperms" | grep -iE "/system/|/vendor/|/product/" 2>/dev/null
+    echo -e "\n"
+  fi
+fi
+
+#busybox / toybox / toolbox applets available (Android multicall binaries)
+multicall=`busybox --list 2>/dev/null; toybox 2>/dev/null; ls /system/bin/toolbox 2>/dev/null`
+if [ "$multicall" ]; then
+  echo -e "${RED}[-] Multicall binaries / available applets (busybox/toybox/toolbox):${RESET}\n$multicall"
+  echo -e "\n"
+fi
+
+#check app configs (shared_prefs and databases under app sandboxes)
 appconfigs=`find /data/data -name "*.xml" -type f 2>/dev/null`
 if [ "$appconfigs" ]; then
-  echo -e "${RED}[-] App configuration files:${RESET}\n$appconfigs" 
+  echo -e "${RED}[-] App configuration files:${RESET}\n$appconfigs"
   echo -e "\n"
 fi
 
@@ -1010,20 +1025,20 @@ interesting_files()
 {
 echo -e "${YELLOW}### INTERESTING FILES ####################################${RESET}" 
 
-#checks to see if various files are installed
-echo -e "${RED}[-] Useful file locations:${RESET}" ; which nc 2>/dev/null ; which netcat 2>/dev/null ; which wget 2>/dev/null ; which nmap 2>/dev/null ; which gcc 2>/dev/null; which curl 2>/dev/null 
-echo -e "\n" 
+#checks to see if various useful binaries are present on the device
+echo -e "${RED}[-] Useful binary locations:${RESET}" ; which nc 2>/dev/null ; which busybox 2>/dev/null ; which toybox 2>/dev/null ; which wget 2>/dev/null ; which curl 2>/dev/null ; which dd 2>/dev/null ; which su 2>/dev/null ; which magisk 2>/dev/null
+echo -e "\n"
 
-#limited search for installed compilers
-compiler=`dpkg --list 2>/dev/null| grep compiler |grep -v decompiler 2>/dev/null && yum list installed 'gcc*' 2>/dev/null| grep gcc 2>/dev/null`
-if [ "$compiler" ]; then
-  echo -e "${RED}[-] Installed compilers:${RESET}\n$compiler" 
+#check for su / root-management binaries (Android privesc indicator)
+subin=`ls -la /system/bin/su /system/xbin/su /sbin/su /su/bin/su /magisk 2>/dev/null; which su 2>/dev/null`
+if [ "$subin" ]; then
+  echo -e "${YELLOW}[+] su / root-management binaries present:${RESET}\n$subin"
   echo -e "\n"
 fi
 
-#manual check - lists out sensitive files, can we read/modify etc.
-echo -e "${RED}[-] Can we read/write sensitive files:${RESET}" ; ls -la /etc/group 2>/dev/null ; ls -la /etc/profile 2>/dev/null; ls -la /etc/master.passwd 2>/dev/null 
-echo -e "\n" 
+#manual check - lists out Android-relevant config/identity files, can we read/modify etc.
+echo -e "${RED}[-] Permissions on sensitive Android files:${RESET}" ; ls -la /default.prop 2>/dev/null ; ls -la /system/build.prop 2>/dev/null ; ls -la /vendor/build.prop 2>/dev/null ; ls -la /data/local.prop 2>/dev/null ; ls -la /sepolicy 2>/dev/null
+echo -e "\n"
 
 #search for suid files
 allsuid=`find /system /vendor /data -perm -4000 -type f 2>/dev/null`
@@ -1060,7 +1075,7 @@ if [ "$wwsuidrt" ]; then
 fi
 
 #search for sgid files
-allsgid=`find / -perm -2000 -type f 2>/dev/null`
+allsgid=`find /system /vendor /data -perm -2000 -type f 2>/dev/null`
 findsgid=`find $allsgid -perm -2000 -type f -exec ls -la {} 2>/dev/null \;`
 if [ "$findsgid" ]; then
   echo -e "${RED}[-] SGID files:${RESET}\n$findsgid" 
@@ -1094,7 +1109,7 @@ if [ "$wwsgidrt" ]; then
 fi
 
 #list all files with POSIX capabilities set along with there capabilities
-fileswithcaps=`getcap -r / 2>/dev/null || /sbin/getcap -r / 2>/dev/null`
+fileswithcaps=`getcap -r /system /vendor 2>/dev/null || /sbin/getcap -r /system /vendor 2>/dev/null`
 if [ "$fileswithcaps" ]; then
   echo -e "${RED}[+] Files with POSIX capabilities set:${RESET}\n$fileswithcaps"
   echo -e "\n"
@@ -1132,18 +1147,18 @@ matchedcaps=`echo -e "$userswithcaps" | grep \`whoami\` | awk '{print $1}' 2>/de
 	fi
 fi
 
-#look for private keys - thanks djhohnstein
+#look for private keys in app sandboxes and shared storage - thanks djhohnstein
 if [ "$thorough" = "1" ]; then
-privatekeyfiles=`grep -rl "PRIVATE KEY-----" /home 2>/dev/null`
+privatekeyfiles=`grep -rl "PRIVATE KEY-----" /data/data /data/local/tmp /sdcard 2>/dev/null`
 	if [ "$privatekeyfiles" ]; then
-  		echo -e "${YELLOW}[+] Private SSH keys found!:${RESET}\n$privatekeyfiles"
+  		echo -e "${YELLOW}[+] Private keys found!:${RESET}\n$privatekeyfiles"
   		echo -e "\n"
 	fi
 fi
 
 #look for AWS keys - thanks djhohnstein
 if [ "$thorough" = "1" ]; then
-awskeyfiles=`grep -rli "aws_secret_access_key" /home 2>/dev/null`
+awskeyfiles=`grep -rli "aws_secret_access_key" /data/data /data/local/tmp /sdcard 2>/dev/null`
 	if [ "$awskeyfiles" ]; then
   		echo -e "${YELLOW}[+] AWS secret keys found!:${RESET}\n$awskeyfiles"
   		echo -e "\n"
@@ -1152,16 +1167,16 @@ fi
 
 #look for git credential files - thanks djhohnstein
 if [ "$thorough" = "1" ]; then
-gitcredfiles=`find / -name ".git-credentials" 2>/dev/null`
+gitcredfiles=`find /data /sdcard -name ".git-credentials" 2>/dev/null`
 	if [ "$gitcredfiles" ]; then
-  		echo -e "${YELLOW}[+] Git credentials saved on the machine!:${RESET}\n$gitcredfiles"
+  		echo -e "${YELLOW}[+] Git credentials saved on the device!:${RESET}\n$gitcredfiles"
   		echo -e "\n"
 	fi
 fi
 
-#list all world-writable files excluding /proc and /sys
+#list all world-writable files under the writable Android trees (excluding /proc and /sys)
 if [ "$thorough" = "1" ]; then
-wwfiles=`find / ! -path "*/proc/*" ! -path "/sys/*" -perm -2 -type f -exec ls -la {} 2>/dev/null \;`
+wwfiles=`find /data /system /vendor /storage ! -path "*/proc/*" ! -path "/sys/*" -perm -2 -type f -exec ls -la {} 2>/dev/null \;`
 	if [ "$wwfiles" ]; then
 		echo -e "${RED}[-] World-writable files (excluding /proc and /sys):${RESET}\n$wwfiles" 
 		echo -e "\n"
@@ -1175,38 +1190,24 @@ if [ "$thorough" = "1" ]; then
 	fi
 fi
 
-if [ "$thorough" = "1" ]; then
-  #phackt
-  #displaying /etc/fstab
-  fstab=`cat /etc/fstab 2>/dev/null`
-  if [ "$fstab" ]; then
-    echo -e "${RED}[-] NFS displaying partitions and filesystems - you need to check if exotic filesystems${RESET}"
-    echo -e "$fstab"
+#displaying Android fstab files - reveal partitions, flags (e.g. verify/forceencrypt) and mount points
+androidfstab=`cat /fstab.* /vendor/etc/fstab.* /odm/etc/fstab.* /etc/recovery.fstab 2>/dev/null`
+if [ "$androidfstab" ]; then
+  echo -e "${RED}[-] Android fstab entries (partitions / mount flags - check for missing verify/encryption):${RESET}"
+  echo -e "$androidfstab"
+  echo -e "\n"
+
+  #flag fstab entries lacking verified-boot/encryption protections
+  weakmounts=`echo "$androidfstab" | grep -vE "^#" | grep -iE "verify|avb|forceencrypt|fileencryption" -L 2>/dev/null; echo "$androidfstab" | grep -iE "wait,?(.*ro)?" 2>/dev/null`
+  if [ "$androidfstab" ] && ! echo "$androidfstab" | grep -qiE "verify|avb"; then
+    echo -e "${YELLOW}[+] No verify/avb flags seen in fstab - verified boot may not cover all partitions${RESET}"
     echo -e "\n"
   fi
 fi
 
-#looking for credentials in /etc/fstab
-fstab=`grep username /etc/fstab 2>/dev/null |awk '{sub(/.*\username=/,"");sub(/\,.*/,"")}1' 2>/dev/null| xargs -r echo username: 2>/dev/null; grep password /etc/fstab 2>/dev/null |awk '{sub(/.*\password=/,"");sub(/\,.*/,"")}1' 2>/dev/null| xargs -r echo password: 2>/dev/null; grep domain /etc/fstab 2>/dev/null |awk '{sub(/.*\domain=/,"");sub(/\,.*/,"")}1' 2>/dev/null| xargs -r echo domain: 2>/dev/null`
-if [ "$fstab" ]; then
-  echo -e "${YELLOW}[+] Looks like there are credentials in /etc/fstab!${RESET}\n$fstab"
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$fstab" ]; then
-  mkdir $format/etc-exports/ 2>/dev/null
-  cp /etc/fstab $format/etc-exports/fstab done 2>/dev/null
-fi
-
-fstabcred=`grep cred /etc/fstab 2>/dev/null |awk '{sub(/.*\credentials=/,"");sub(/\,.*/,"")}1' 2>/dev/null | xargs -I{} sh -c 'ls -la {}; cat {}' 2>/dev/null`
-if [ "$fstabcred" ]; then
-    echo -e "${YELLOW}[+] /etc/fstab contains a credentials file!${RESET}\n$fstabcred" 
-    echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$fstabcred" ]; then
-  mkdir $format/etc-exports/ 2>/dev/null
-  cp /etc/fstab $format/etc-exports/fstab done 2>/dev/null
+if [ "$export" ] && [ "$androidfstab" ]; then
+  mkdir $format/fstab-export/ 2>/dev/null
+  cp /fstab.* /vendor/etc/fstab.* /odm/etc/fstab.* /etc/recovery.fstab $format/fstab-export/ 2>/dev/null
 fi
 
 #use supplied keyword and cat *.conf files for potential matches
@@ -1317,10 +1318,10 @@ if [ "$keyword" = "" ];then
   fi
 fi
 
-#quick extract of .conf files from /etc - only 1 level
-allconf=`find /etc/ -maxdepth 1 -name *.conf -type f -exec ls -la {} \; 2>/dev/null`
+#quick extract of .rc/.prop/.conf config files from Android system dirs
+allconf=`find /system/etc /vendor/etc /odm/etc / -maxdepth 1 \( -name "*.conf" -o -name "*.rc" -o -name "*.prop" \) -type f -exec ls -la {} \; 2>/dev/null`
 if [ "$allconf" ]; then
-  echo -e "${RED}[-] All *.conf files in /etc (recursive 1 level):${RESET}\n$allconf" 
+  echo -e "${RED}[-] System config files (*.conf / *.rc / *.prop in /system/etc, /vendor/etc, /odm/etc, /):${RESET}\n$allconf"
   echo -e "\n"
 fi
 
@@ -1329,34 +1330,20 @@ if [ "$export" ] && [ "$allconf" ]; then
   for i in $allconf; do cp --parents $i $format/conf-files/; done 2>/dev/null
 fi
 
-#check command history in shell
-if [ -f "/data/local/tmp/.sh_history" ]; then
-    echo -e "${RED}[-] Shell history:${RESET}"
-    cat /data/local/tmp/.sh_history 2>/dev/null
+#check shell command history in common Android shell locations
+shellhist=`cat /data/local/tmp/.sh_history /data/local/tmp/.ash_history /data/local/tmp/.mksh_history /sdcard/.sh_history 2>/dev/null`
+if [ "$shellhist" ]; then
+    echo -e "${RED}[-] Shell history:${RESET}\n$shellhist"
     echo -e "\n"
 fi
 
-#can we read roots *_history files - could be passwords stored etc.
-roothist=`ls -la /root/.*_history 2>/dev/null`
-if [ "$roothist" ]; then
-  echo -e "${YELLOW}[+] Root's history files are accessible!${RESET}\n$roothist" 
-  echo -e "\n"
-fi
-
-if [ "$export" ] && [ "$roothist" ]; then
+if [ "$export" ] && [ "$shellhist" ]; then
   mkdir $format/history_files/ 2>/dev/null
-  cp $roothist $format/history_files/ 2>/dev/null
-fi
-
-#all accessible .bash_history files in /home
-checkbashhist=`find /home -name .bash_history -print -exec cat {} 2>/dev/null \;`
-if [ "$checkbashhist" ]; then
-  echo -e "${RED}[-] Location and contents (if accessible) of .bash_history file(s):${RESET}\n$checkbashhist"
-  echo -e "\n"
+  cp /data/local/tmp/.*_history /sdcard/.*_history $format/history_files/ 2>/dev/null
 fi
 
 #any .bak files that may be of interest
-bakfiles=`find / -name *.bak -type f 2</dev/null`
+bakfiles=`find /system /vendor /data /sdcard -name "*.bak" -type f 2>/dev/null`
 if [ "$bakfiles" ]; then
   echo -e "${RED}[-] Location and Permissions (if accessible) of .bak file(s):${RESET}"
   for bak in `echo $bakfiles`; do ls -la $bak;done
@@ -1562,6 +1549,7 @@ call_each()
   header
   debug_info
   system_info
+  bootloader_info
   check_android_81_vulns
   user_info
   environmental_info
@@ -1573,12 +1561,11 @@ call_each()
   footer
 }
 
-while getopts "h:k:r:e:st" option
-do 
+while getopts "h:k:r:e:t" option
+do
     if [ "$option" = "k" ]; then keyword=$OPTARG; fi
     if [ "$option" = "r" ]; then report=$OPTARG-`date +"%d-%m-%y"`; fi
     if [ "$option" = "e" ]; then export=$OPTARG; fi
-    if [ "$option" = "s" ]; then sudopass=1; fi
     if [ "$option" = "t" ]; then thorough=1; fi
     if [ "$option" = "h" ]; then usage; exit; fi
     if [ "$option" = "*" ]; then usage; exit; fi

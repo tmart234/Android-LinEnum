@@ -2,6 +2,16 @@
 
 Note: Export functionality is currently in the experimental stage.
 
+## V1.0 (Android) (release 28-05-2026)
+* Completed the transition to a pure-Android enumeration script by @tmart234
+* Wired `bootloader_info` into the scan and fixed a doubled-`getprop` bug in bootloader name lookup
+* Replaced legacy Linux checks with Android equivalents:
+  * `software_configs`: build fingerprint, security patch level, SELinux status, installed/third-party packages, multicall binaries (busybox/toybox/toolbox) — removed Apache/httpd checks
+  * `services_info`: Android init services (`init.svc.*`) and writable/non-root init `.rc` checks — removed upstart `/etc/init` and `/usr/local/etc/rc.d`
+  * `interesting_files`: Android sensitive files (`*.prop`, `sepolicy`), su/root binaries, Android fstab parsing, app-sandbox/shared-storage credential hunting, Android shell history — removed `/etc/fstab`, `/etc/master.passwd`, `dpkg`/`yum`, `/home`, `/root` checks
+  * Scoped SUID/SGID/capability/world-writable searches to Android trees (`/system`, `/vendor`, `/data`, `/storage`)
+* Removed the unsupported `-s` (sudo) option
+
 ## V0.99 (release 09-07-2019)
 * Improvements to Android output by @tmart234
 
